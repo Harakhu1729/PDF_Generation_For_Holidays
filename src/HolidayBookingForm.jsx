@@ -1,5 +1,15 @@
 import { useState } from "react";
 
+const TRANSFER_MODES = [
+  "Cab",
+  "Ferry",
+  "Flight",
+  "Train",
+  "Bus",
+  "Walking",
+  "Bike",
+];
+
 const PLACES_BY_COUNTRY = [
   { country: "Thailand", places: [
     "Bangkok", "Phuket", "Chiang Mai", "Ko Samui", "Krabi",
@@ -142,7 +152,7 @@ const initialState = {
   sightseeingLocation: "",
   sightseeingInput: "",
   sightseeings: [],           // [{ order, country, location, sightseeing }]
-  modeOfTransfer: "",
+  transfers: {},              // { "country|location|country|location": "Cab" }
   accommodationDropdown: "",
   accommodationText: "",
   visa: null,
@@ -327,8 +337,8 @@ export default function HolidayBookingForm() {
     if (totalPlacesSelected === 0)
       newErrors.placesToCover = "Select at least one place to cover.";
 
-    if (!form.modeOfTransfer)
-      newErrors.modeOfTransfer = "Mode of transfer is required.";
+    if (transfers.some((t) => !t.mode.trim()))
+      newErrors.transfers = "Select or type a mode of transfer for every leg of the journey.";
 
     if (!form.accommodationText)
       newErrors.accommodationText = "Accommodation is required.";
@@ -364,6 +374,15 @@ export default function HolidayBookingForm() {
       }
     });
 
+    // Convert transfers object into the array shape FastAPI expects
+    const transfersArray = transfers.map((t) => ({
+      from_country:     t.fromCountry,
+      from_location:    t.fromLocation,
+      to_country:       t.toCountry,
+      to_location:      t.toLocation,
+      mode_of_transfer: t.mode,
+    }));
+
     const payload = {
       date_of_departure:         form.dateOfDeparture || null,
       number_of_pax:             form.numberOfPax || null,
@@ -373,7 +392,7 @@ export default function HolidayBookingForm() {
       departure_city:            form.departureCity || null,
       places_to_cover:           mergedPlaces,
       sightseeings:              form.sightseeings,
-      mode_of_transfer:          form.modeOfTransfer || null,
+      transfers:                 transfersArray,
       accommodation:             form.accommodationText || null,
       visa_included:             form.visa,
       travel_insurance_included: form.travelInsurance,
@@ -410,6 +429,56 @@ export default function HolidayBookingForm() {
   const sightseeingLocationOptions = form.sightseeingCountry
     ? (allSelectedPlaces[form.sightseeingCountry] || [])
     : [];
+
+  // --- Mode of Transfer between locations ---
+
+  const generateTransfers = () => {
+    if (form.sightseeings.length < 2) return [];
+
+    const sorted = [...form.sightseeings].sort((a, b) => a.order - b.order);
+    const locationSequence = [];
+
+    sorted.forEach((s) => {
+      const lastEntry = locationSequence[locationSequence.length - 1];
+      if (!lastEntry || lastEntry.location !== s.location) {
+        locationSequence.push({
+          location: s.location,
+          country: s.country,
+          sightseeings: [s.sightseeing],
+        });
+      } else {
+        lastEntry.sightseeings.push(s.sightseeing);
+      }
+    });
+
+    const result = [];
+    for (let i = 0; i < locationSequence.length - 1; i++) {
+      const fromLoc = locationSequence[i];
+      const toLoc = locationSequence[i + 1];
+      const transferKey = `${fromLoc.country}|${fromLoc.location}|${toLoc.country}|${toLoc.location}`;
+
+      result.push({
+        key: transferKey,
+        fromCountry: fromLoc.country,
+        fromLocation: fromLoc.location,
+        fromSightseeings: fromLoc.sightseeings,
+        toCountry: toLoc.country,
+        toLocation: toLoc.location,
+        toSightseeing: toLoc.sightseeings[0],
+        mode: form.transfers[transferKey] || "",
+      });
+    }
+    return result;
+  };
+
+  const transfers = generateTransfers();
+
+  const handleTransferModeChange = (transferKey, mode) => {
+    setForm((prev) => ({
+      ...prev,
+      transfers: { ...prev.transfers, [transferKey]: mode },
+    }));
+  };
 
   return (
     <div style={{ maxWidth: 720, padding: "2rem 1rem", fontFamily: "sans-serif", fontSize: 14 }}>
@@ -781,26 +850,101 @@ export default function HolidayBookingForm() {
 
         <hr style={{ margin: "2rem 0", border: "none", borderTop: "1px solid #e0e0e0" }} />
 
-        {/* 6. Mode of Transfer */}
+        {/* 6. Mode of Transfer Between Sightseeing Locations */}
         <div style={{ marginBottom: "1.5rem" }}>
-          <label htmlFor="transfer-mode" style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
-            6. Mode of transfer
+          <label style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
+            6. Mode of transfer between sightseeing locations
           </label>
-          <select
-            id="transfer-mode"
-            value={form.modeOfTransfer}
-            onChange={(e) => handleChange("modeOfTransfer", e.target.value)}
-            style={{ padding: "6px 10px", fontSize: 14, width: 200 }}
-          >
-            <option value="">— Select —</option>
-            <option value="A">Option A</option>
-            <option value="B">Option B</option>
-            <option value="C">Option C</option>
-          </select>
-          {errors.modeOfTransfer && (
-            <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.modeOfTransfer}</p>
+          <p style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
+            Auto-generated from the sightseeings above. Select or type the transfer mode for each leg.
+          </p>
+
+          {transfers.length === 0 ? (
+            <p style={{ fontSize: 13, color: "#999" }}>
+              Add at least 2 sightseeings at different locations to generate transfer legs.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {transfers.map((transfer) => (
+                <div
+                  key={transfer.key}
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    borderRadius: 6,
+                    padding: 14,
+                    background: "#fafafa",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      marginBottom: 12,
+                      fontSize: 13,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ fontWeight: 500 }}>
+                      {transfer.fromLocation}{" "}
+                      <span style={{ color: "#888" }}>
+                        ({transfer.fromSightseeings.join(", ")})
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 18, color: "#333" }}>──→</div>
+                    <div style={{ fontWeight: 500 }}>
+                      {transfer.toLocation}{" "}
+                      <span style={{ color: "#888" }}>({transfer.toSightseeing})</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <select
+                      value={TRANSFER_MODES.includes(transfer.mode) ? transfer.mode : ""}
+                      onChange={(e) => handleTransferModeChange(transfer.key, e.target.value)}
+                      style={{
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        border: "1px solid #ccc",
+                        borderRadius: 4,
+                        flex: 1,
+                        minWidth: 200,
+                      }}
+                    >
+                      <option value="">— Select or type mode —</option>
+                      {TRANSFER_MODES.map((mode) => (
+                        <option key={mode} value={mode}>{mode}</option>
+                      ))}
+                    </select>
+
+                    <input
+                      type="text"
+                      placeholder="Or type custom (e.g., Private Yacht)"
+                      value={transfer.mode}
+                      onChange={(e) => handleTransferModeChange(transfer.key, e.target.value)}
+                      style={{
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        border: "1px solid #ccc",
+                        borderRadius: 4,
+                        flex: 1,
+                        minWidth: 200,
+                      }}
+                    />
+                  </div>
+
+                  {transfer.mode && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: "#2d7a3a" }}>
+                      ✓ Selected: <strong>{transfer.mode}</strong>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
-          <p style={{ fontSize: 12, color: "#888", marginTop: 4 }}>Options will be updated with actual transfer types.</p>
+          {errors.transfers && (
+            <p style={{ color: "red", fontSize: 12, marginTop: 8 }}>{errors.transfers}</p>
+          )}
         </div>
 
         <hr style={{ margin: "2rem 0", border: "none", borderTop: "1px solid #e0e0e0" }} />
