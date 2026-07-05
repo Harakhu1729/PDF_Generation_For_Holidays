@@ -135,8 +135,33 @@ const ALL_DESTINATIONS = [
   "Si Phan Don (Four Thousand Islands)",
 ];
 
+const MOCK_HOTELS = [
+  { name: "Lavencos Hotel GM", rating: 3 },
+  { name: "Parosand Hanoi Hotel & Apartment", rating: 4 },
+  { name: "Gaia Hotel Phu Quoc", rating: 5 },
+];
+
+const MEAL_OPTIONS = [
+  "Breakfast",
+  "Lunch",
+  "Snacks",
+  "Dinner",
+  "Special Dinner"
+];
+
+const ROOM_TYPES = [
+  "VIP Suite",
+  "Normal 2 Adults in 1 room occupancy",
+  "Single person",
+  "3 persons in single room",
+  "4 persons in single room"
+];
+
 const initialState = {
+  customerName: "",
   dateOfDeparture: "",
+  totalNights: "",        // 2a. manual input — drives total_nights / total_days
+  stopNights: {},         // 7. { [stopIndex]: "2" } — nights entered per non-last stop
   numberOfPax: "",
   numberOfAdults: "",
   numberOfKids: "",
@@ -153,11 +178,48 @@ const initialState = {
   sightseeingInput: "",
   sightseeings: [],           // [{ order, country, location, sightseeing }]
   transfers: {},              // { "country|location|country|location": "Cab" }
-  accommodationDropdown: "",
-  accommodationText: "",
+  //accommodationDropdown: "",
+  //accommodationText: "",
   visa: null,
   travelInsurance: null,
+  // Subtask 4.2 — new optional fields
+  totalPackageCost: "",
+  agentName: "",
+  agentPhone: "",
+  agentEmail: "",
+  totalNights: "",        
+  stopNights: {},         
+  stopHotels: {},         // NEW: { [stopIndex]: { name: "", rating: "", roomType: "", meals: [], pool: false, beach: false } }
+  numberOfPax: "",
+  arrivalAirport: "",
+  returnAirport: "",
+  placesToCover: {},
 };
+
+// Groups an ordered list of sightseeing entries into "stops" — consecutive
+// entries at the same location collapse into a single stop. Shared by the
+// transfer-leg generator (section 8) and the nights-per-stop section (section 7).
+function deriveStops(sightseeings) {
+  if (sightseeings.length === 0) return [];
+
+  const sorted = [...sightseeings].sort((a, b) => a.order - b.order);
+  const stops = [];
+
+  sorted.forEach((s) => {
+    const lastEntry = stops[stops.length - 1];
+    if (!lastEntry || lastEntry.location !== s.location) {
+      stops.push({
+        location: s.location,
+        country: s.country,
+        sightseeings: [s.sightseeing],
+      });
+    } else {
+      lastEntry.sightseeings.push(s.sightseeing);
+    }
+  });
+
+  return stops;
+}
 
 export default function HolidayBookingForm() {
   const [form, setForm] = useState(initialState);
@@ -307,8 +369,16 @@ export default function HolidayBookingForm() {
   const validate = () => {
     const newErrors = {};
 
+    if (!form.customerName)
+      newErrors.customerName = "Customer name is required.";
+
     if (!form.dateOfDeparture)
       newErrors.dateOfDeparture = "Date of departure is required.";
+
+    if (!form.totalNights)
+      newErrors.totalNights = "Total nights for the trip is required.";
+    else if (parseInt(form.totalNights, 10) < 1)
+      newErrors.totalNights = "Total nights must be at least 1.";
 
     if (!form.numberOfPax)
       newErrors.numberOfPax = "Number of passengers is required.";
@@ -337,17 +407,47 @@ export default function HolidayBookingForm() {
     if (totalPlacesSelected === 0)
       newErrors.placesToCover = "Select at least one place to cover.";
 
+    if (stops.length === 0) {
+      newErrors.stopsNights = "Add sightseeings above to allocate nights per stop.";
+    } else {
+      const lastIdx = stops.length - 1;
+      const everyNonLastFilled = stops.every((_, idx) => {
+        if (idx === lastIdx) return true;
+        const v = parseInt(form.stopNights[idx], 10);
+        return !isNaN(v) && v >= 1;
+      });
+      if (!everyNonLastFilled) {
+        newErrors.stopsNights = "Enter at least 1 night for every stop except the last.";
+      } else if (isOverAllocated) {
+        newErrors.stopsNights =
+          `Nights allocated (${allocatedNights}) exceed total nights for the trip ` +
+          `(${totalNightsNum}). Adjust the values above or revise section 2a.`;
+      }
+    }
+
     if (transfers.some((t) => !t.mode.trim()))
       newErrors.transfers = "Select or type a mode of transfer for every leg of the journey.";
 
-    if (!form.accommodationText)
-      newErrors.accommodationText = "Accommodation is required.";
+    //if (!form.accommodationText)
+      //newErrors.accommodationText = "Accommodation is required.";
 
     if (!form.visa)
       newErrors.visa = "Please select a VISA preference.";
 
     if (!form.travelInsurance)
       newErrors.travelInsurance = "Please select a travel insurance preference.";
+    
+    if (!form.departureCity)
+      newErrors.departureCity = "Departure city is required.";
+      
+    if (!form.arrivalAirport)
+      newErrors.arrivalAirport = "Arrival airport (destination) is required.";
+      
+    if (!form.returnAirport)
+      newErrors.returnAirport = "Return airport (destination) is required.";
+
+    if (totalPlacesSelected === 0)
+      newErrors.placesToCover = "Select at least one place to cover.";
 
     return newErrors;
   };
@@ -383,7 +483,33 @@ export default function HolidayBookingForm() {
       mode_of_transfer: t.mode,
     }));
 
+    // Build stops array — every stop including the auto-calculated last one,
+    // since the future PDF date math needs every stop's nights, never null.
+    const lastIdx = stops.length - 1;
+    const stopsArray = stops.map((s, idx) => {
+      const hotelData = form.stopHotels[idx] || {};
+      
+      // Combine meals, pool, and beach into the single amenities string the backend expects
+      const amenitiesList = [...(hotelData.meals || [])];
+      if (hotelData.pool) amenitiesList.push("Swimming Pool Access");
+      if (hotelData.beach) amenitiesList.push("Private Beach Front");
+
+      return {
+        stop_order: idx + 1,
+        country:    s.country,
+        location:   s.location,
+        nights:     idx === lastIdx ? lastStopNights : parseInt(form.stopNights[idx], 10),
+        // NEW HOTEL FIELDS:
+        hotel_name:        hotelData.name || null,
+        hotel_star_rating: hotelData.rating || null,
+        hotel_room_type:   hotelData.roomType || null,
+        hotel_meal_plan:   hotelData.meals?.length > 0 ? hotelData.meals.join(", ") : null, 
+        hotel_amenities:   amenitiesList.length > 0 ? amenitiesList.join(", ") : null,
+      };
+    });
+
     const payload = {
+      customer_name:              form.customerName || null,
       date_of_departure:         form.dateOfDeparture || null,
       number_of_pax:             form.numberOfPax || null,
       number_of_adults:          form.numberOfAdults || null,
@@ -391,11 +517,21 @@ export default function HolidayBookingForm() {
       number_of_infants:         form.numberOfInfants || null,
       departure_city:            form.departureCity || null,
       places_to_cover:           mergedPlaces,
+      arrival_airport:           form.arrivalAirport || null,
+      return_airport:            form.returnAirport || null, 
       sightseeings:              form.sightseeings,
       transfers:                 transfersArray,
-      accommodation:             form.accommodationText || null,
+      total_nights:              totalNightsNum,
+      total_days:                totalDaysNum === "" ? null : totalDaysNum,
+      stops:                     stopsArray,
+      //accommodation:             form.accommodationText || null,
       visa_included:             form.visa,
       travel_insurance_included: form.travelInsurance,
+      // Subtask 4.2 — new optional fields
+      total_package_cost:        form.totalPackageCost ? parseInt(form.totalPackageCost, 10) : null,
+      agent_name:                form.agentName  || null,
+      agent_phone:               form.agentPhone || null,
+      agent_email:               form.agentEmail || null,
     };
 
     try {
@@ -422,7 +558,12 @@ export default function HolidayBookingForm() {
     setFormData(null);
     setErrors({});
   };
-
+  
+  const handleDownloadPdf = () => {
+    if (!formData?.booking_id) return;
+    window.open(`http://localhost:8000/api/bookings/${formData.booking_id}/pdf`, "_blank");
+  };
+  
   const isGroupBooking = parseInt(form.numberOfPax) >= 10;
 
   // Locations available for selected sightseeing country
@@ -430,44 +571,206 @@ export default function HolidayBookingForm() {
     ? (allSelectedPlaces[form.sightseeingCountry] || [])
     : [];
 
+  // --- Nights per stop (section 7) ---
+
+  const stops = deriveStops(form.sightseeings);
+  const lastStopIdx = stops.length - 1;
+
+  const totalNightsNum = form.totalNights === "" ? null : parseInt(form.totalNights, 10);
+  const totalDaysNum =
+    totalNightsNum !== null && !isNaN(totalNightsNum) ? totalNightsNum + 1 : "";
+
+  // Sum of nights typed into every stop EXCEPT the last (the last is auto-calculated)
+  const allocatedNights = stops.reduce((sum, _, idx) => {
+    if (idx === lastStopIdx) return sum;
+    const v = parseInt(form.stopNights[idx], 10);
+    return sum + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  const lastStopNights =
+    totalNightsNum !== null && !isNaN(totalNightsNum) ? totalNightsNum - allocatedNights : null;
+
+  // Only possible by reducing the 2a total AFTER stops were filled in — flagged here,
+  // not auto-corrected, and blocked at submit (validate()) rather than live.
+  const isOverAllocated = totalNightsNum !== null && allocatedNights > totalNightsNum;
+
+  const handleTotalNights = (value) => {
+    handleChange("totalNights", value.replace(/[^0-9]/g, ""));
+  };
+
+  // Hard block: a keystroke that would push the running total over total_nights is
+  // rejected outright (value stays at its last valid state) rather than clamped.
+  const handleStopNightsChange = (idx, rawValue) => {
+    const cleaned = rawValue.replace(/[^0-9]/g, "");
+
+    setForm((prev) => {
+      if (cleaned === "") {
+        const updated = { ...prev.stopNights };
+        delete updated[idx];
+        return { ...prev, stopNights: updated };
+      }
+
+      const newVal = parseInt(cleaned, 10);
+      const total = prev.totalNights === "" ? null : parseInt(prev.totalNights, 10);
+      const stopsNow = deriveStops(prev.sightseeings);
+      const lastIdxNow = stopsNow.length - 1;
+
+      let othersSum = 0;
+      stopsNow.forEach((_, i) => {
+        if (i === lastIdxNow || i === idx) return;
+        const v = parseInt(prev.stopNights[i], 10);
+        if (!isNaN(v)) othersSum += v;
+      });
+
+      if (total !== null && !isNaN(total) && othersSum + newVal > total) {
+        return prev; // reject — over the cap, keystroke has no effect
+      }
+
+      return { ...prev, stopNights: { ...prev.stopNights, [idx]: cleaned } };
+    });
+  };
+  
+  const handleStopHotelChange = (idx, field, value) => {
+    setForm((prev) => {
+      // Get current hotel state for this stop, or initialize a blank one
+      const currentHotel = prev.stopHotels[idx] || { 
+        name: "", rating: "", roomType: "", meals: [], pool: false, beach: false 
+      };
+
+      let newValue = value;
+
+      // Auto-fill star rating when a mock hotel is selected
+      if (field === "name") {
+        const selectedHotel = MOCK_HOTELS.find(h => h.name === value);
+        currentHotel.rating = selectedHotel ? selectedHotel.rating : "";
+      } 
+      // Handle the array of meal checkboxes
+      else if (field === "meals") {
+        const { meal, checked } = value;
+        const currentMeals = currentHotel.meals || [];
+        newValue = checked 
+          ? [...currentMeals, meal] 
+          : currentMeals.filter(m => m !== meal);
+      }
+
+      return {
+        ...prev,
+        stopHotels: {
+          ...prev.stopHotels,
+          [idx]: { 
+            ...currentHotel, 
+            [field === "meals" ? "meals" : field]: newValue 
+          }
+        }
+      };
+    });
+  };
   // --- Mode of Transfer between locations ---
 
   const generateTransfers = () => {
-    if (form.sightseeings.length < 2) return [];
-
-    const sorted = [...form.sightseeings].sort((a, b) => a.order - b.order);
-    const locationSequence = [];
-
-    sorted.forEach((s) => {
-      const lastEntry = locationSequence[locationSequence.length - 1];
-      if (!lastEntry || lastEntry.location !== s.location) {
-        locationSequence.push({
-          location: s.location,
-          country: s.country,
-          sightseeings: [s.sightseeing],
-        });
-      } else {
-        lastEntry.sightseeings.push(s.sightseeing);
-      }
-    });
+    const locationSequence = deriveStops(form.sightseeings);
+    if (locationSequence.length === 0) return [];
 
     const result = [];
+
+    // LEG 1: Home Airport -> Arrival Airport (Hardcoded Flight)
+    if (form.departureCity && form.arrivalAirport) {
+      const flightInKey = `__flight_in__|${form.departureCity}|${form.arrivalAirport}`;
+      result.push({
+        key: flightInKey,
+        fromCountry: "Home",
+        fromLocation: form.departureCity,
+        fromSightseeings: ["Departure Airport"],
+        toCountry: "Destination",
+        toLocation: form.arrivalAirport,
+        toSightseeing: "Arrival Airport",
+        mode: "Flight",
+        isFixedFlight: true,
+        isAirportLeg: true,
+      });
+    }
+
+    // LEG 2 (PHASE 1): Arrival Airport -> First Hotel
+    if (form.arrivalAirport && locationSequence.length > 0) {
+      const firstStop = locationSequence[0];
+      const firstHotelName = form.stopHotels[0]?.name || "Hotel (TBD)";
+      const airportToHotelKey = `__airport_to_hotel__|${form.arrivalAirport}|${firstStop.country}|${firstStop.location}`;
+      result.push({
+        key: airportToHotelKey,
+        fromCountry: "Destination",
+        fromLocation: form.arrivalAirport,
+        fromSightseeings: ["Arrival Airport"],
+        toCountry: firstStop.country,
+        toLocation: firstStop.location,
+        toSightseeing: firstHotelName, // Replaced sightseeing with Hotel
+        mode: form.transfers[airportToHotelKey] || "",
+        isFixedFlight: false,
+        isAirportLeg: true,
+      });
+    }
+
+    // LEGS 3 to N-2 (PHASE 2): Inter-stop legs (Hotel to Hotel)
     for (let i = 0; i < locationSequence.length - 1; i++) {
       const fromLoc = locationSequence[i];
       const toLoc = locationSequence[i + 1];
+      
+      const fromHotelName = form.stopHotels[i]?.name || "Hotel (TBD)";
+      const toHotelName = form.stopHotels[i + 1]?.name || "Hotel (TBD)";
+      
       const transferKey = `${fromLoc.country}|${fromLoc.location}|${toLoc.country}|${toLoc.location}`;
 
       result.push({
         key: transferKey,
         fromCountry: fromLoc.country,
         fromLocation: fromLoc.location,
-        fromSightseeings: fromLoc.sightseeings,
+        fromSightseeings: [fromHotelName], // Replaced sightseeings with Departure Hotel
         toCountry: toLoc.country,
         toLocation: toLoc.location,
-        toSightseeing: toLoc.sightseeings[0],
+        toSightseeing: toHotelName, // Replaced sightseeing with Arrival Hotel
         mode: form.transfers[transferKey] || "",
+        isFixedFlight: false,
+        isAirportLeg: false,
       });
     }
+
+    // LEG N-1 (PHASE 3): Last Hotel -> Return Airport
+    if (form.returnAirport && locationSequence.length > 0) {
+      const lastIndex = locationSequence.length - 1;
+      const lastStop = locationSequence[lastIndex];
+      const lastHotelName = form.stopHotels[lastIndex]?.name || "Hotel (TBD)";
+      
+      const hotelToAirportKey = `__hotel_to_airport__|${lastStop.country}|${lastStop.location}|${form.returnAirport}`;
+      result.push({
+        key: hotelToAirportKey,
+        fromCountry: lastStop.country,
+        fromLocation: lastStop.location,
+        fromSightseeings: [lastHotelName], // Replaced sightseeings with Final Hotel
+        toCountry: "Destination",
+        toLocation: form.returnAirport,
+        toSightseeing: "Return Airport",
+        mode: form.transfers[hotelToAirportKey] || "",
+        isFixedFlight: false,
+        isAirportLeg: true,
+      });
+    }
+
+    // LEG N (PHASE 4): Return Airport -> Home Airport (Hardcoded Flight)
+    if (form.returnAirport && form.departureCity) {
+      const flightOutKey = `__flight_out__|${form.returnAirport}|${form.departureCity}`;
+      result.push({
+        key: flightOutKey,
+        fromCountry: "Destination",
+        fromLocation: form.returnAirport, 
+        fromSightseeings: ["Return Airport"],
+        toCountry: "Home",
+        toLocation: form.departureCity,
+        toSightseeing: "Return Airport",
+        mode: "Flight",
+        isFixedFlight: true, 
+        isAirportLeg: true,
+      });
+    }
+
     return result;
   };
 
@@ -489,10 +792,28 @@ export default function HolidayBookingForm() {
 
       <form onSubmit={handleSubmit}>
 
-        {/* 1. Date of Departure */}
+        {/* 1. Customer Name */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <label htmlFor="customer-name" style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
+            1. Customer name
+          </label>
+          <input
+            type="text"
+            id="customer-name"
+            placeholder="Enter customer's full name"
+            value={form.customerName}
+            onChange={(e) => handleChange("customerName", e.target.value)}
+            style={{ padding: "6px 10px", fontSize: 14, width: 320 }}
+          />
+          {errors.customerName && (
+            <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.customerName}</p>
+          )}
+        </div>
+
+        {/* 2. Date of Departure */}
         <div style={{ marginBottom: "1.5rem" }}>
           <label htmlFor="departure-date" style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
-            1. Date of departure
+            2. Date of departure
           </label>
           <input
             type="date"
@@ -506,10 +827,44 @@ export default function HolidayBookingForm() {
           )}
         </div>
 
-        {/* 2. Number of Pax */}
+        {/* 2a. Trip duration */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <label htmlFor="total-nights" style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
+            2a. Total nights for the trip
+          </label>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 16 }}>
+            <div>
+              <input
+                type="number"
+                id="total-nights"
+                min="1"
+                placeholder="e.g. 4"
+                value={form.totalNights}
+                onChange={(e) => handleTotalNights(e.target.value)}
+                style={{ padding: "6px 10px", fontSize: 14, width: 120 }}
+              />
+              {errors.totalNights && (
+                <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.totalNights}</p>
+              )}
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, color: "#666", marginBottom: 6 }}>
+                Total days (auto)
+              </label>
+              <div style={{
+                padding: "6px 10px", fontSize: 14, width: 90,
+                background: "#f5f5f5", border: "1px solid #ddd", borderRadius: 4,
+              }}>
+                {totalDaysNum === "" ? "—" : totalDaysNum}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Number of Pax */}
         <div style={{ marginBottom: "1.5rem" }}>
           <label htmlFor="num-pax" style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
-            2. Number of passengers
+            3. Number of passengers
           </label>
           <input
             type="number"
@@ -530,10 +885,10 @@ export default function HolidayBookingForm() {
           )}
         </div>
 
-        {/* 2a. Pax Breakdown */}
+        {/* 3a. Pax Breakdown */}
         <div style={{ marginBottom: "1.5rem" }}>
           <label style={{ display: "block", fontWeight: 500, marginBottom: 8 }}>
-            2a. Passenger breakdown
+            3a. Passenger breakdown
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
             <div>
@@ -575,37 +930,82 @@ export default function HolidayBookingForm() {
           </div>
         </div>
 
-        {/* 3. Departure City */}
+        {/* 4. Airports & Flights */}
         <div style={{ marginBottom: "1.5rem" }}>
-          <label htmlFor="departure-city" style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
-            3. Departure city / airport
+          <label style={{ display: "block", fontWeight: 500, marginBottom: 8 }}>
+            4. Airports & Flights
           </label>
-          <select
-            id="departure-city"
-            value={form.departureCity}
-            onChange={(e) => handleChange("departureCity", e.target.value)}
-            style={{ padding: "6px 10px", fontSize: 14, width: "100%", maxWidth: 520 }}
-          >
-            <option value="">— Select airport —</option>
-            {AIRPORTS.map(({ group, options }) => (
-              <optgroup key={group} label={group}>
-                {options.map((airport) => (
-                  <option key={airport} value={airport}>{airport}</option>
+          
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
+            {/* 4a. Home Departure City */}
+            <div style={{ flex: "1 1 200px" }}>
+              <label htmlFor="departure-city" style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
+                Home Departure City
+              </label>
+              <select
+                id="departure-city"
+                value={form.departureCity}
+                onChange={(e) => handleChange("departureCity", e.target.value)}
+                style={{ padding: "6px 10px", fontSize: 14, width: "100%", boxSizing: "border-box" }}
+              >
+                <option value="">— Select home airport —</option>
+                {AIRPORTS.map(({ group, options }) => (
+                  <optgroup key={group} label={group}>
+                    {options.map((airport) => (
+                      <option key={airport} value={airport}>{airport}</option>
+                    ))}
+                  </optgroup>
                 ))}
-              </optgroup>
-            ))}
-          </select>
-          {errors.departureCity && (
-            <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.departureCity}</p>
-          )}
+              </select>
+              {errors.departureCity && (
+                <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.departureCity}</p>
+              )}
+            </div>
+
+            {/* 4b. Arrival Airport */}
+            <div style={{ flex: "1 1 200px" }}>
+              <label htmlFor="arrival-airport" style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
+                Arrival Airport (Destination)
+              </label>
+              <input
+                type="text"
+                id="arrival-airport"
+                placeholder="e.g. Phuket Int. Airport (HKT)"
+                value={form.arrivalAirport}
+                onChange={(e) => handleChange("arrivalAirport", e.target.value)}
+                style={{ padding: "6px 10px", fontSize: 14, width: "100%", boxSizing: "border-box" }}
+              />
+              {errors.arrivalAirport && (
+                <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.arrivalAirport}</p>
+              )}
+            </div>
+
+            {/* 4c. Return Airport */}
+            <div style={{ flex: "1 1 200px" }}>
+              <label htmlFor="return-airport" style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
+                Return Airport (Final Departure)
+              </label>
+              <input
+                type="text"
+                id="return-airport"
+                placeholder="e.g. Suvarnabhumi (BKK)"
+                value={form.returnAirport}
+                onChange={(e) => handleChange("returnAirport", e.target.value)}
+                style={{ padding: "6px 10px", fontSize: 14, width: "100%", boxSizing: "border-box" }}
+              />
+              {errors.returnAirport && (
+                <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.returnAirport}</p>
+              )}
+            </div>
+          </div>
         </div>
 
         <hr style={{ margin: "2rem 0", border: "none", borderTop: "1px solid #e0e0e0" }} />
 
-        {/* 4. Places to Cover */}
+        {/* 5. Places to Cover */}
         <div style={{ marginBottom: "1.5rem" }}>
           <label style={{ display: "block", fontWeight: 500, marginBottom: 8 }}>
-            4. Places to be covered (select all that apply)
+            5. Places to be covered (select all that apply)
           </label>
           {totalPlacesSelected > 0 && (
             <p style={{ fontSize: 12, color: "#2d7a3a", marginBottom: 8 }}>
@@ -733,10 +1133,10 @@ export default function HolidayBookingForm() {
 
         <hr style={{ margin: "2rem 0", border: "none", borderTop: "1px solid #e0e0e0" }} />
 
-        {/* 5. Sightseeings */}
+        {/* 6. Sightseeings */}
         <div style={{ marginBottom: "1.5rem" }}>
           <label style={{ display: "block", fontWeight: 500, marginBottom: 8 }}>
-            5. Sightseeings
+            6. Sightseeings
           </label>
 
           {totalPlacesSelected === 0 ? (
@@ -850,10 +1250,170 @@ export default function HolidayBookingForm() {
 
         <hr style={{ margin: "2rem 0", border: "none", borderTop: "1px solid #e0e0e0" }} />
 
-        {/* 6. Mode of Transfer Between Sightseeing Locations */}
+        {/* 7. Nights per stop */}
         <div style={{ marginBottom: "1.5rem" }}>
           <label style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
-            6. Mode of transfer between sightseeing locations
+            7. Nights per stop
+          </label>
+          <p style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
+            Derived from the sightseeings above. Enter nights for every stop except the
+            last — its nights are calculated automatically from section 2a.
+          </p>
+
+          {stops.length === 0 ? (
+            <p style={{ fontSize: 13, color: "#999" }}>
+              Add sightseeings above to allocate nights per stop.
+            </p>
+          ) : (
+            <>
+              <p style={{
+                fontSize: 13, fontWeight: 500, marginBottom: 12,
+                color: isOverAllocated ? "#c0392b" : "#2d7a3a",
+              }}>
+                {allocatedNights} of {totalNightsNum ?? "—"} nights allocated
+                {isOverAllocated && " — over allocated, adjust below or revise section 2a"}
+              </p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {stops.map((stop, idx) => {
+                  const isLast = idx === lastStopIdx;
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        border: "1px solid #e0e0e0",
+                        borderRadius: 6,
+                        padding: 14,
+                        background: "#fafafa",
+                      }}
+                    >
+                      <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 8 }}>
+                        {stop.country} → {stop.location}{" "}
+                        <span style={{ color: "#888", fontWeight: 400 }}>
+                          ({stop.sightseeings.join(", ")})
+                        </span>
+                      </div>
+                      
+                      {/* --- EXISTING NIGHTS INPUT --- */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <label style={{ fontSize: 13 }}>Nights here</label>
+                        {isLast ? (
+                          <div style={{
+                            padding: "6px 10px", fontSize: 13, width: 80,
+                            background: "#f0f0f0", border: "1px solid #ddd", borderRadius: 4,
+                          }}>
+                            {lastStopNights ?? "—"}
+                            <span style={{ fontSize: 11, color: "#888", marginLeft: 6 }}>(auto)</span>
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="e.g. 2"
+                            value={form.stopNights[idx] ?? ""}
+                            onChange={(e) => handleStopNightsChange(idx, e.target.value)}
+                            style={{ padding: "6px 10px", fontSize: 13, width: 80 }}
+                          />
+                        )}
+                      </div>
+
+                      {/* --- NEW HOTEL UI --- */}
+                      <div style={{ marginTop: 16, borderTop: "1px dashed #ccc", paddingTop: 12 }}>
+                        <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 8, display: "block" }}>
+                          Hotel & Accommodation
+                        </label>
+                        
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                          {/* Hotel Name Dropdown */}
+                          <select
+                            value={form.stopHotels[idx]?.name || ""}
+                            onChange={(e) => handleStopHotelChange(idx, "name", e.target.value)}
+                            style={{ padding: "6px 10px", fontSize: 13, minWidth: 150 }}
+                          >
+                            <option value="">— Select Hotel —</option>
+                            {MOCK_HOTELS.map(h => (
+                              <option key={h.name} value={h.name}>{h.name}</option>
+                            ))}
+                          </select>
+
+                          {/* Read-Only Star Rating */}
+                          <div style={{ padding: "6px 10px", fontSize: 13, background: "#f0f0f0", borderRadius: 4, minWidth: 80 }}>
+                            {form.stopHotels[idx]?.rating ? `${form.stopHotels[idx].rating} Star` : "Rating"}
+                          </div>
+
+                          {/* Room Type Dropdown */}
+                          <select
+                            value={form.stopHotels[idx]?.roomType || ""}
+                            onChange={(e) => handleStopHotelChange(idx, "roomType", e.target.value)}
+                            style={{ padding: "6px 10px", fontSize: 13, flex: 1, minWidth: 200 }}
+                          >
+                            <option value="">— Select Room Type —</option>
+                            {ROOM_TYPES.map(rt => (
+                              <option key={rt} value={rt}>{rt}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Amenities section only shows if a hotel is selected */}
+                        {form.stopHotels[idx]?.name && (
+                          <div style={{ background: "#f9f9f9", padding: "10px", borderRadius: 4, border: "1px solid #eee" }}>
+                            
+                            <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 6, display: "block" }}>Meals Included:</label>
+                            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                              {MEAL_OPTIONS.map(meal => (
+                                <label key={meal} style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={(form.stopHotels[idx]?.meals || []).includes(meal)}
+                                    onChange={(e) => handleStopHotelChange(idx, "meals", { meal, checked: e.target.checked })}
+                                  />
+                                  {meal}
+                                </label>
+                              ))}
+                            </div>
+
+                            <label style={{ fontSize: 12, fontWeight: 500, marginBottom: 6, display: "block" }}>Property Facilities:</label>
+                            <div style={{ display: "flex", gap: 16 }}>
+                              <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={form.stopHotels[idx]?.pool || false}
+                                  onChange={(e) => handleStopHotelChange(idx, "pool", e.target.checked)}
+                                />
+                                Swimming Pool Access, Free Wifi, Free Self Parking
+                              </label>
+                              <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={form.stopHotels[idx]?.beach || false}
+                                  onChange={(e) => handleStopHotelChange(idx, "beach", e.target.checked)}
+                                />
+                                Private Beach Front
+                              </label>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {/* --- END OF NEW HOTEL UI --- */}
+
+                    </div>
+                  );
+                })}
+              </div>
+
+              {errors.stopsNights && (
+                <p style={{ color: "red", fontSize: 12, marginTop: 8 }}>{errors.stopsNights}</p>
+              )}
+            </>
+          )}
+        </div>
+
+        <hr style={{ margin: "2rem 0", border: "none", borderTop: "1px solid #e0e0e0" }} />
+
+        {/* 8. Mode of Transfer Between Sightseeing Locations */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <label style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
+            8. Mode of transfer between sightseeing locations
           </label>
           <p style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
             Auto-generated from the sightseeings above. Select or type the transfer mode for each leg.
@@ -885,6 +1445,12 @@ export default function HolidayBookingForm() {
                       flexWrap: "wrap",
                     }}
                   >
+                    {transfer.isAirportLeg && (
+                      <span style={{
+                        fontSize: 11, fontWeight: 500, background: "#e8f0fe",
+                        color: "#1a56c4", padding: "2px 8px", borderRadius: 20,
+                      }}>✈ Airport transfer</span>
+                    )}
                     <div style={{ fontWeight: 500 }}>
                       {transfer.fromLocation}{" "}
                       <span style={{ color: "#888" }}>
@@ -899,38 +1465,42 @@ export default function HolidayBookingForm() {
                   </div>
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <select
-                      value={TRANSFER_MODES.includes(transfer.mode) ? transfer.mode : ""}
-                      onChange={(e) => handleTransferModeChange(transfer.key, e.target.value)}
-                      style={{
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        border: "1px solid #ccc",
-                        borderRadius: 4,
-                        flex: 1,
-                        minWidth: 200,
-                      }}
-                    >
-                      <option value="">— Select or type mode —</option>
-                      {TRANSFER_MODES.map((mode) => (
-                        <option key={mode} value={mode}>{mode}</option>
-                      ))}
-                    </select>
+                    {transfer.isFixedFlight ? (
+                      <div style={{
+                        padding: "8px 10px", fontSize: 13, border: "1px solid #ccc",
+                        borderRadius: 4, flex: 1, minWidth: 200, background: "#f0f0f0", color: "#555",
+                        display: "flex", alignItems: "center", fontWeight: 500
+                      }}>
+                        ✈️ Locked: Flight
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          value={TRANSFER_MODES.includes(transfer.mode) ? transfer.mode : ""}
+                          onChange={(e) => handleTransferModeChange(transfer.key, e.target.value)}
+                          style={{
+                            padding: "8px 10px", fontSize: 13, border: "1px solid #ccc",
+                            borderRadius: 4, flex: 1, minWidth: 200,
+                          }}
+                        >
+                          <option value="">— Select or type mode —</option>
+                          {TRANSFER_MODES.map((mode) => (
+                            <option key={mode} value={mode}>{mode}</option>
+                          ))}
+                        </select>
 
-                    <input
-                      type="text"
-                      placeholder="Or type custom (e.g., Private Yacht)"
-                      value={transfer.mode}
-                      onChange={(e) => handleTransferModeChange(transfer.key, e.target.value)}
-                      style={{
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        border: "1px solid #ccc",
-                        borderRadius: 4,
-                        flex: 1,
-                        minWidth: 200,
-                      }}
-                    />
+                        <input
+                          type="text"
+                          placeholder="Or type custom (e.g., Private Yacht)"
+                          value={transfer.mode}
+                          onChange={(e) => handleTransferModeChange(transfer.key, e.target.value)}
+                          style={{
+                            padding: "8px 10px", fontSize: 13, border: "1px solid #ccc",
+                            borderRadius: 4, flex: 1, minWidth: 200,
+                          }}
+                        />
+                      </>
+                    )}
                   </div>
 
                   {transfer.mode && (
@@ -949,39 +1519,36 @@ export default function HolidayBookingForm() {
 
         <hr style={{ margin: "2rem 0", border: "none", borderTop: "1px solid #e0e0e0" }} />
 
-        {/* 7. Accommodation */}
+        {/* 9. Accommodation */}
+        {/*Whole text was commented out because it was not needed in the final form.*/}
+
+        {/* 9a. Total Package Cost */}
         <div style={{ marginBottom: "1.5rem" }}>
-          <label style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
-            7. Accommodation
+          <label htmlFor="total-package-cost" style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>
+            9a. Total package cost (₹) <span style={{ fontWeight: 400, color: "#888", fontSize: 12 }}>— optional</span>
           </label>
-          <select
-            value={form.accommodationDropdown}
-            onChange={(e) => handleAccommodationDropdown(e.target.value)}
-            style={{ padding: "6px 10px", fontSize: 14, width: 260, marginBottom: 8, display: "block" }}
-          >
-            <option value="">— Select a type —</option>
-            {ACCOMMODATION_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
           <input
-            type="text"
-            placeholder="Or type accommodation details directly..."
-            value={form.accommodationText}
-            onChange={(e) => handleChange("accommodationText", e.target.value)}
-            style={{ padding: "6px 10px", fontSize: 13, width: "100%", maxWidth: 420 }}
+            type="number"
+            id="total-package-cost"
+            min="0"
+            placeholder="e.g. 168000"
+            value={form.totalPackageCost}
+            onChange={(e) => handleChange("totalPackageCost", e.target.value.replace(/[^0-9]/g, ""))}
+            style={{ padding: "6px 10px", fontSize: 14, width: 200 }}
           />
-          {errors.accommodationText && (
-            <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.accommodationText}</p>
+          {form.totalPackageCost && (
+            <p style={{ fontSize: 12, color: "#2d7a3a", marginTop: 4 }}>
+              ₹ {parseInt(form.totalPackageCost, 10).toLocaleString("en-IN")}
+            </p>
           )}
         </div>
 
         <hr style={{ margin: "2rem 0", border: "none", borderTop: "1px solid #e0e0e0" }} />
 
-        {/* 8 & 9. VISA + Travel Insurance */}
+        {/* 9 & 10. VISA + Travel Insurance */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "2rem" }}>
           <div>
-            <label style={{ display: "block", fontWeight: 500, marginBottom: 8 }}>8. VISA</label>
+            <label style={{ display: "block", fontWeight: 500, marginBottom: 8 }}>10. VISA</label>
             <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, cursor: "pointer" }}>
               <input
                 type="radio" name="visa" value="true"
@@ -1003,7 +1570,7 @@ export default function HolidayBookingForm() {
             )}
           </div>
           <div>
-            <label style={{ display: "block", fontWeight: 500, marginBottom: 8 }}>9. Travel insurance</label>
+            <label style={{ display: "block", fontWeight: 500, marginBottom: 8 }}>11. Travel insurance</label>
             <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, cursor: "pointer" }}>
               <input
                 type="radio" name="insurance" value="true"
@@ -1026,6 +1593,45 @@ export default function HolidayBookingForm() {
           </div>
         </div>
 
+        {/* 12. Curated By */}
+        <div style={{ marginBottom: "2rem" }}>
+          <label style={{ display: "block", fontWeight: 500, marginBottom: 8 }}>
+            12. Curated by <span style={{ fontWeight: 400, color: "#888", fontSize: 12 }}>— optional</span>
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+            <div>
+              <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>Agent name</label>
+              <input
+                type="text"
+                placeholder="e.g. Priya Sharma"
+                value={form.agentName}
+                onChange={(e) => handleChange("agentName", e.target.value)}
+                style={{ padding: "6px 8px", fontSize: 13, width: "100%" }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>Agent phone</label>
+              <input
+                type="text"
+                placeholder="e.g. 9876543210"
+                value={form.agentPhone}
+                onChange={(e) => handleChange("agentPhone", e.target.value)}
+                style={{ padding: "6px 8px", fontSize: 13, width: "100%" }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>Agent email</label>
+              <input
+                type="email"
+                placeholder="e.g. agent@example.in"
+                value={form.agentEmail}
+                onChange={(e) => handleChange("agentEmail", e.target.value)}
+                style={{ padding: "6px 8px", fontSize: 13, width: "100%" }}
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Actions */}
         <div style={{ display: "flex", gap: 12 }}>
           <button type="submit" style={{ padding: "8px 20px", fontSize: 14, cursor: "pointer" }}>
@@ -1034,9 +1640,21 @@ export default function HolidayBookingForm() {
           <button type="button" onClick={handleReset} style={{ padding: "8px 20px", fontSize: 14, cursor: "pointer" }}>
             Reset
           </button>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={!submitted || !formData?.booking_id}
+            style={{
+              padding: "8px 20px",
+              fontSize: 14,
+              cursor: submitted && formData?.booking_id ? "pointer" : "not-allowed",
+              opacity: submitted && formData?.booking_id ? 1 : 0.4,
+            }}
+          >
+            Download PDF
+          </button>
         </div>
       </form>
-
       {/* Output */}
       {submitted && formData && (
         <div style={{ marginTop: "2rem" }}>

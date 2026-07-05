@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Itinerary - Riya Kapoor</title>
+<style>
+  /* Phase 2, Subtask 4 — card/badge styling for the itinerary timeline.
+     Grayscale by design (per Harsh: brand color comes in Phase 5, not here).
+     WeasyPrint 69.0 constraints respected: no box-shadow, no backdrop-filter.
+     page-break-inside/break-inside: avoid is used on cards so a stop never
+     splits awkwardly across a page boundary mid-card. */
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #222; }
+  h1 { font-size: 20px; margin-bottom: 2px; }
+  h2 { font-size: 16px; margin-top: 24px; border-bottom: 1px solid #999; padding-bottom: 4px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+  td, th { border: 1px solid #ccc; padding: 4px 8px; text-align: left; font-size: 12px; }
+  ul { margin-top: 4px; }
+  .meta-block { margin-bottom: 4px; }
+  .label { color: #666; }
+
+  .stop-card {
+    background: #f6f6f6;
+    border-left: 4px solid #888;
+    border-radius: 6px;
+    padding: 10px 16px;
+    margin: 12px 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .stop-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .stop-location {
+    font-size: 14px;
+    font-weight: bold;
+  }
+  .stop-dates {
+    font-size: 11.5px;
+    color: #555;
+    margin-top: 2px;
+  }
+  .nights-badge {
+    display: inline-block;
+    background: #ddd;
+    color: #333;
+    border-radius: 12px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: bold;
+    white-space: nowrap;
+  }
+  .stop-card ul {
+    margin: 8px 0 0 18px;
+    padding: 0;
+  }
+  .transfer-row {
+    text-align: center;
+    font-size: 12px;
+    color: #666;
+    margin: 6px 0;
+    padding: 2px 0;
+  }
+  .transfer-row .arrow {
+    font-size: 13px;
+    margin: 0 6px;
+    color: #999;
+  }
+  .transfer-row .mode {
+    font-style: italic;
+    color: #333;
+  }
+</style>
+</head>
+<body>
+
+  <h1>Riya Kapoor's trip to Vietnam</h1>
+  <div class="meta-block">4N / 5D &middot; Departing from Kempegowda International Airport (BLR) — Bengaluru on 2026-09-12</div>
+
+  <div class="meta-block">
+    <span class="label">Curated by:</span>
+    Priya Sharma &middot; 9876543210 &middot; priya.sharma@example-ota.in
+  </div>
+  <div class="meta-block">
+    <span class="label">Quotation created on:</span> 29 Jun 2026, 12:12 PM
+  </div>
+  <div class="meta-block">
+    <span class="label">Total cost:</span> ₹ 85,000 for 3 (2 Adults, 1 Kid)
+  </div>
+
+  <h2>Tax Collected at Source (TCS)</h2>
+  
+    <p>TCS is mandatory for International Travel Packages</p>
+  
+    <p>20% TCS is applicable on individual transactions above Rs. 10,00,000 per annum</p>
+  
+    <p>As per Union Budget 2025, 5% TCS will be applicable on International travel packages up to Rs. 10,00,000 (excluding TCS) against each PAN in a financial year (FY). Above this limit, TCS will be applicable at 20% on the incremental amount.</p>
+  
+    <p>TCS is neither a cost nor additional tax, it can be fully adjusted against income tax liability and excess, if any, can be claimed as a refund.</p>
+  
+
+  <h2>Highlights</h2>
+  <ul>
+    <li>2 Stops</li>
+    <li>4 Activities</li>
+    <li>1 Transfers</li>
+    <li>Visa Included: Yes</li>
+    <li>Travel Insurance Included: No</li>
+    <li>Accommodation: 3-Star Hotel</li>
+  </ul>
+
+  <h2>Your Itinerary</h2>
+  
+    
+      <div class="stop-card">
+        <div class="stop-header">
+          <span class="stop-location">Ho Chi Minh City, Vietnam</span>
+          <span class="nights-badge">2 Nights</span>
+        </div>
+        <div class="stop-dates">12/09/2026 &ndash; 14/09/2026</div>
+        <ul>
+          
+            <li>Cu Chi Tunnels Tour</li>
+          
+            <li>City Tour</li>
+          
+        </ul>
+      </div>
+    
+  
+    
+      <div class="transfer-row">
+        Ho Chi Minh City (Vietnam)
+        <span class="arrow">&rarr;</span>
+        Hoi An (Vietnam)
+        &middot; <span class="mode">Flight</span>
+      </div>
+    
+  
+    
+      <div class="stop-card">
+        <div class="stop-header">
+          <span class="stop-location">Hoi An, Vietnam</span>
+          <span class="nights-badge">2 Nights</span>
+        </div>
+        <div class="stop-dates">14/09/2026 &ndash; 16/09/2026</div>
+        <ul>
+          
+            <li>Ancient Town Walking Tour</li>
+          
+            <li>Lantern Boat Ride</li>
+          
+        </ul>
+      </div>
+    
+  
+
+  <h2>Places Covered</h2>
+  <ul>
+    
+      <li>Vietnam: Ho Chi Minh City, Hoi An</li>
+    
+  </ul>
+
+  
+  <h2>Visa FAQs</h2>
+  <p>This package comes with a Visa included. You will have to provide the documents required to process the VISA. Our agent will get in touch with you post booking to initiate the Visa process.</p>
+  
+    <p><strong>1. Do I need to share my original passport to get a Vietnam visa?</strong><br>No, original passport is not required for processing. Upload only soft copies of the documents.</p>
+  
+    <p><strong>2. How long does it take to get a visa?</strong><br>Usually a visa is approved by the embassy in 3-5 working days.</p>
+  
+    <p><strong>3. When can we enter Vietnam and how many days can we stay in Vietnam once we enter?</strong><br>You can enter Vietnam within 90 days validity period and can stay for a max of 30 days in Vietnam from your date of entry.</p>
+  
+    <p><strong>4. Can I enter Vietnam by sea or land?</strong><br>Yes with e-visa you can enter Vietnam through specific borders and ports from Thailand, Laos and Cambodia.</p>
+  
+    <p><strong>5. Can I get a Visa on arrival for Vietnam?</strong><br>Yes, you can get your visa on arrival. However we recommend you to take a visa from India to avoid standing in long queues and paperwork.</p>
+  
+    <p><strong>6. What documents are required at Immigration?</strong><br>Below are the list of documents required at immigration: Original passport. Print out of your e-visa. Onward and return air tickets. Accommodation proof (hotel vouchers or residential proof).</p>
+  
+    <p><strong>7. Does every Indian National travelling to Vietnam need a Visa?</strong><br>Visa is required for all Indian Nationals</p>
+  
+  
+
+  <h2>TCS Credit &amp; Refund</h2>
+  <ul>
+    
+      <li>TCS credit would reflect in your Form 26AS on quarterly basis. You may also request a TCS certificate from EMT.</li>
+    
+      <li>Charged TCS can be claimed against the tax payable at the time of filing the return.</li>
+    
+      <li>In case there is no tax payable, you can claim the refund of TCS amount at the time of filing income tax return.</li>
+    
+  </ul>
+
+  <h2>Terms &amp; Conditions</h2>
+  <ul>
+    
+      <li>Above given quote is valid for 72 Hours. Please ask for a new quotation if the booking is not made within 72 Hours.</li>
+    
+      <li>Above given quote is tentative and is subject to change depending on the availabilities along with prices at the time of making the advance payment ahead.</li>
+    
+      <li>Rate of Exchange will be calculated XE.com + 2 Rs.</li>
+    
+      <li>Any change in Pricing, Hotels, Sightseeing's & Airlines due to the availability or unforeseen circumstances, will be conveyed to you within 24 hours after you have paid the booking amount.</li>
+    
+      <li>Payments against your package strictly has to be paid as per the payment conditions mentioned if the payment is not made accordingly, we may have to cancel all your services / bookings.</li>
+    
+      <li>Booking Amount is Non-Refundable</li>
+    
+      <li>Please make sure your Passport is valid for minimum 6 months from date of return to India.</li>
+    
+      <li>Issuance or delay of your visa will be sole discretion of embassy and EaseMyTrip will not be responsible for the same. If your visa gets rejected or delayed embassy's end the cancellation will be applicable as per the cancellation policy.</li>
+    
+      <li>As per the new Govt. Norms 20% TCS is applicable from 1st Oct 2023 on all the payments made, if your total billing of overseas travel exceeds 7 Lakhs in a financial year. For any further clarification please contact your sale's agent. Please note we require your Signature on TCS Declaration form at the time of booking, same has to be sent back to us with your signatures on the same. If TCS Declaration form is not shared by the sale's agent with you at the time of booking, please ask for the same.</li>
+    
+      <li>City Tax if applicable is directly payable at the hotel.</li>
+    
+      <li>Your tour package will start after reaching the destination, we will not be providing any services within India.</li>
+    
+      <li>Check-in time in most of the hotels will be 2 PM and check-out time in most of the hotels will be 11 AM.</li>
+    
+      <li>Early Check in and Late Check out is not the part of the package hence if required, against same need to be paid over and above the given cost.</li>
+    
+      <li>Rooms, Sightseeing and Flight Tickets are Subject to availability at the time of booking.</li>
+    
+      <li>We will not be responsible for loss of any valuables you will be carrying along with you during the tour.</li>
+    
+      <li>We strongly recommend to take travel insurance for your tour duration to avoid any hassles caused due to unforeseen circumstances.</li>
+    
+      <li>Any increase in Gov. Taxes, Airfare, Fuel Surcharge & Airlines taxes charged by the airlines on the air ticket before the issuance of flight tickets, the same shall be charged extra irrespective of the booking date.</li>
+    
+      <li>Peak season, weekend and special event surcharges if any, will be applicable over and above the given costing.</li>
+    
+      <li>All personal expenses, optional tours and extra meals has to be paid directly.</li>
+    
+      <li>Portages at Hotels, Airport & Sea Ports is not the part of given holiday package.</li>
+    
+      <li>Due to any unforeseen circumstances or natural calamities which cause any changes or cancellation in your itinerary, Sightseeing's / activities, transfers --- no refund or compensation will be provided against the same.</li>
+    
+      <li>There will be no refund for the unused and unutilized services.</li>
+    
+      <li>RT-PCR (if required) need to be taken within 48 hours from Departure Date.</li>
+    
+      <li>Anything not mentioned in the inclusions has to be paid directly or in advance (if added or availed).</li>
+    
+      <li>Required OTB for ECR Passport depending on Destination you flying to.</li>
+    
+      <li>Note: Double-Dose Vaccination Certificate is mandatory to carry for international travel.</li>
+    
+      <li>Rates are based on today's ROE (Rate of Exchange) and final ROE will be calculated at the time of making the final/total Payment against your Tour Package.</li>
+    
+  </ul>
+
+  <!--
+    Cancellation Policy section intentionally omitted (Phase 3, confirmed
+    gap): no standalone generic Cancellation Policy document exists at
+    the company. Showing a fake or empty section to a real customer
+    would be worse than omitting it. Revisit if/when one is created —
+    see static_content.py header comment.
+  -->
+
+</body>
+</html>

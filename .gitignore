@@ -1,22 +1,16 @@
-# Python
-__pycache__/
+# Exclude everything by default at the root level
+/*
+
+# Explicitly whitelist the necessary application folders and root configurations
+!/backend/
+!/public/
+!/src/
+!/.gitignore
+!/LICENSE.txt
+
+# Re-apply structural blocks inside your whitelisted folders
+backend/__pycache__/
+backend/venv/
+backend/bookings.db
 *.pyc
-venv/
-
-# Database
-*.db
-
-# Node
-node_modules/
-
-# Environment variables
-.env
-
-# VS Code
-*.code-workspace
-
-# OS files
 .DS_Store
-Thumbs.db
-
-*.code-workspace
