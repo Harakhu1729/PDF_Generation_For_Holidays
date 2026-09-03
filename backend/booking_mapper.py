@@ -1,10 +1,10 @@
 """
 Subtasks 4.1 + 4.2 — DB row -> booking_dict mapping function.
-
+ 
 Converts a real BookingRecord (with its SQLAlchemy relationships already
 loaded) into the exact dict shape render_booking_to_pdf() expects,
 matching booking_data.py's SAMPLE_BOOKING shape.
-
+ 
 All 5 previously-stubbed fields are now real (Subtask 4.2):
   - total_package_cost / _display / _pax_label : pulled from the new
     DB column + computed from existing pax columns at mapping time.
@@ -12,20 +12,20 @@ All 5 previously-stubbed fields are now real (Subtask 4.2):
     moment map_booking_record_to_dict() is called (refresh-on-download).
   - curated_by : pulled from the new agent_name / agent_phone /
     agent_email columns; falls back to empty string if not entered.
-
+ 
 Airport <-> hotel transfer legs arrive as ordinary booking_transfer rows
 (same table as inter-stop transfers) — no special handling needed here.
 """
-
+ 
 from datetime import datetime
 from main import BookingRecord
-
-
-
+ 
+ 
+ 
 # ---------------------------------------------------------------------------
 # Private helpers — used only by map_booking_record_to_dict() below
 # ---------------------------------------------------------------------------
-
+ 
 def _format_inr(amount: int | None) -> str:
     """
     Format an integer INR amount in Indian numbering style.
@@ -47,8 +47,8 @@ def _format_inr(amount: int | None) -> str:
         groups.append(rest)
     groups.reverse()
     return f"₹ {','.join(groups)},{last3}"
-
-
+ 
+ 
 def _build_pax_label(
     total_pax: str | None,
     adults: str | None,
@@ -70,23 +70,23 @@ def _build_pax_label(
         total     = int(total_pax) if total_pax else (n_adults + n_kids + n_infants)
     except (ValueError, TypeError):
         return "TBD"
-
+ 
     parts = []
     if n_adults  > 0: parts.append(f"{n_adults} Adult{'s' if n_adults != 1 else ''}")
     if n_kids    > 0: parts.append(f"{n_kids} Kid{'s' if n_kids != 1 else ''}")
     if n_infants > 0: parts.append(f"{n_infants} Infant{'s' if n_infants != 1 else ''}")
-
+ 
     if not parts:
         return str(total)
     return f"{total} ({', '.join(parts)})"
-
-
+ 
+ 
 def map_booking_record_to_dict(record: BookingRecord) -> dict:
     # --- places_to_cover: { "Vietnam": ["Ho Chi Minh City", "Hoi An"] } ---
     places_dict = {}
     for p in record.places:
         places_dict[p.country] = [place.strip() for place in p.places.split(",")]
-
+ 
     # --- sightseeings, sorted by order_number (same shape as booking_data.py) ---
     sightseeings_list = sorted(
         [
@@ -100,7 +100,7 @@ def map_booking_record_to_dict(record: BookingRecord) -> dict:
         ],
         key=lambda x: x["order"],
     )
-
+ 
     # --- transfers (includes any airport<->hotel legs once those exist) ---
     transfers_list = [
         {
@@ -112,7 +112,7 @@ def map_booking_record_to_dict(record: BookingRecord) -> dict:
         }
         for t in record.booking_transfers
     ]
-
+ 
     # --- stops, sorted by stop_order ---
     stops_list = sorted(
         [
@@ -134,7 +134,7 @@ def map_booking_record_to_dict(record: BookingRecord) -> dict:
         ],
         key=lambda x: x["stop_order"],
     )
-
+ 
     return {
         "id": record.id,
         "customer_name": record.customer_name,
@@ -155,9 +155,9 @@ def map_booking_record_to_dict(record: BookingRecord) -> dict:
         #"accommodation": record.accommodation,
         "visa_included": record.visa_included,
         "travel_insurance_included": record.travel_insurance_included,
-
+ 
         # ----- Subtask 4.2: real values (no more stubs) -----
-
+ 
         # total_package_cost: stored as plain integer (INR, no decimals).
         # _display formats it as Indian-style currency string if present.
         # _pax_label builds e.g. '4 (2 Adults, 2 Kids, 0 Infants)' from
@@ -170,11 +170,11 @@ def map_booking_record_to_dict(record: BookingRecord) -> dict:
             record.number_of_kids,
             record.number_of_infants,
         ),
-
+ 
         # Generated fresh at the moment this function is called.
         # Every PDF download shows the current timestamp (refresh-on-download).
         "quotation_created_on": datetime.now().strftime("%d %b %Y, %I:%M %p"),
-
+ 
         # Agent details: optional, fall back to empty string if not captured.
         "curated_by": {
             "name":  record.agent_name  or "",

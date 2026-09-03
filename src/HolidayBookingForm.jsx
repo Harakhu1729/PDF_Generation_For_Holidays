@@ -940,7 +940,7 @@ export default function HolidayBookingForm() {
             {/* 4a. Home Departure City */}
             <div style={{ flex: "1 1 200px" }}>
               <label htmlFor="departure-city" style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
-                Home Departure City
+                Home Departure Airport
               </label>
               <select
                 id="departure-city"
@@ -965,7 +965,7 @@ export default function HolidayBookingForm() {
             {/* 4b. Arrival Airport */}
             <div style={{ flex: "1 1 200px" }}>
               <label htmlFor="arrival-airport" style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
-                Arrival Airport (Destination)
+                Arrival Airport at Destination
               </label>
               <input
                 type="text"
@@ -983,7 +983,7 @@ export default function HolidayBookingForm() {
             {/* 4c. Return Airport */}
             <div style={{ flex: "1 1 200px" }}>
               <label htmlFor="return-airport" style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
-                Return Airport (Final Departure)
+                Return Airport from the last location
               </label>
               <input
                 type="text"

@@ -5,6 +5,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from playwright.async_api import async_playwright, Browser, BrowserContext
 import static_content
+from typing import Optional
 
 # Windows fix for Playwright subprocess handling
 ##if sys.platform == "win32":
@@ -51,7 +52,7 @@ def render_template_to_html(booking: dict) -> str:
 async def render_itinerary_pdf_async(
     booking: dict,
     output_path: str,
-    browser: Browser = None,
+    browser: Optional[Browser] = None,
     close_browser: bool = True,
 ) -> str:
     """

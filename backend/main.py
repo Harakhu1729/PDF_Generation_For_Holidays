@@ -26,7 +26,7 @@ from fastapi import Response
 # ----------------------------
  
 DATABASE_URL = "sqlite:///./bookings.db"
-
+ 
  
 engine = create_engine(
     DATABASE_URL, connect_args={"check_same_thread": False}
@@ -106,9 +106,9 @@ class BookingStop(Base):
     hotel_room_type   = Column(String, nullable=True)
     hotel_meal_plan   = Column(String, nullable=True)
     hotel_amenities   = Column(String, nullable=True)
-
+ 
     booking = relationship("BookingRecord", back_populates="stops")
-
+ 
 # ----------------------------
 # TABLE 3 — booking_sightseeings
 # One row per sightseeing entry per booking
@@ -163,7 +163,7 @@ app = FastAPI()
  
 playwright_instance = None
 browser_instance = None
-
+ 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global playwright_instance, browser_instance
@@ -174,9 +174,9 @@ async def lifespan(app: FastAPI):
     print("Shutting down Playwright...")
     await browser_instance.close()
     await playwright_instance.stop()
-
+ 
 app = FastAPI(lifespan=lifespan)
-
+ 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"], # Make sure this matches your React port
@@ -524,15 +524,6 @@ def get_all_bookings(db: Session = Depends(get_db)):
 
 @app.get("/api/bookings/{booking_id}/pdf")
 async def download_booking_pdf(booking_id: int):
-    """
-    Generate and download itinerary PDF for a booking.
-    Uses Playwright (Chromium) for full CSS support.
-    
-    Usage: GET /api/bookings/3/pdf
-    Returns: PDF file with filename like "Aarav_Mehta_itinerary.pdf"
-    """
-@app.get("/api/bookings/{booking_id}/pdf")
-async def download_booking_pdf(booking_id: int):
     db = SessionLocal()
     try:
         record = db.query(BookingRecord).filter(BookingRecord.id == booking_id).first()
@@ -554,7 +545,7 @@ async def download_booking_pdf(booking_id: int):
             )
             
             pdf_bytes = temp_pdf_path.read_bytes()
-
+ 
         customer_name = booking_dict["customer_name"].replace(" ", "_")
         filename = f"{customer_name}_itinerary.pdf"
         
