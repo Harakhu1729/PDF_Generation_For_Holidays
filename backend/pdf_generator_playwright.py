@@ -1,15 +1,24 @@
 import asyncio
-import sys
 import logging
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from playwright.async_api import async_playwright, Browser, BrowserContext
 import static_content
+from image_resolver import resolve_cover_image
 from typing import Optional
 
-# Windows fix for Playwright subprocess handling
-##if sys.platform == "win32":
-    ##asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+# NOTE (defect D3): no event loop policy is set in this module, deliberately.
+#
+# The policy is set once, at process start, in main.py:
+#     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+#
+# ProactorEventLoop is the CORRECT policy here. Playwright launches Chromium as
+# a subprocess, and on Windows SelectorEventLoop raises NotImplementedError from
+# subprocess_exec() — Proactor implements it. Earlier project notes described
+# the Selector policy as "the Windows fix"; that is backwards and would break
+# PDF generation on Windows if reintroduced.
+#
+# `import asyncio` above stays — asyncio.run() is used by the sync wrapper.
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +28,16 @@ TEMPLATE_FILE = "itinerary_template.html"
 
 # Page setup for PDF (A4 standard)
 PDF_MARGIN = {"top": "10mm", "bottom": "10mm", "left": "10mm", "right": "10mm"}
+
+# NOTE (defect D4): there is deliberately no BASE_URL here.
+# Rendering goes through page.set_content(), which leaves the document URL as
+# about:blank. Relative asset paths therefore cannot resolve, and
+# new_context(base_url=...) does not help — it only affects page.goto() and
+# API requests. Absolute file:// URIs do not help either: an about:blank
+# document is an opaque origin and Chromium blocks file:// subresources into
+# it (image fails silently, naturalWidth stays 0).
+# Images are consequently inlined as data: URIs by image_resolver.
+# Do not reintroduce base_url or a <base> tag here — see image_resolver.py.
 
 
 def render_template_to_html(booking: dict) -> str:
@@ -38,6 +57,9 @@ def render_template_to_html(booking: dict) -> str:
 
     context = {
         "booking": booking,
+        # Phase A1/E1: resolved to an absolute file:// URI, or None when no
+        # destination image exists (template then renders the gradient cover).
+        "cover_image_path": resolve_cover_image(booking),
         "countries": list(booking["places_to_cover"].keys()),
         "itinerary_timeline": build_itinerary_timeline(booking),
         "tcs_explanation_paragraphs": static_content.TCS_EXPLANATION_PARAGRAPHS,
@@ -77,12 +99,17 @@ async def render_itinerary_pdf_async(
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(
-                viewport={"width": 1024, "height": 1440}
+                viewport={"width": 1024, "height": 1440},
             )
             page = await context.new_page()
 
             try:
-                await page.set_content(html_string, wait_until="networkidle")
+                # Destination images arrive inlined as data: URIs (see D4
+                # note above), so nothing is fetched over the network here.
+                await page.set_content(
+                    html_string,
+                    wait_until="networkidle"
+                )
                 await page.pdf(
                     path=output_path,
                     format="A4",
@@ -100,12 +127,16 @@ async def render_itinerary_pdf_async(
     else:
         # Use existing browser (faster, for batch rendering)
         context = await browser.new_context(
-            viewport={"width": 1024, "height": 1440}
+            viewport={"width": 1024, "height": 1440},
         )
         page = await context.new_page()
 
         try:
-            await page.set_content(html_string, wait_until="networkidle")
+            # Same as the single-shot branch above.
+            await page.set_content(
+                html_string,
+                wait_until="networkidle"
+            )
             await page.pdf(
                 path=output_path,
                 format="A4",

@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Itinerary - Aarav Mehta</title>
+<style>
+  /* ==========================================================================
+     PHASE 5, SUBTASK 1 — DESIGN SYSTEM
+     CSS variables (tokens) + type scale + spacing scale + base element styles.
+     Playwright/Chromium renders this like a real browser, so box-shadow,
+     gradients, backdrop-filter etc. all work now (unlike WeasyPrint 69.0).
+     Component-level styling (header, highlights, timeline cards, sections)
+     is intentionally NOT done here — that's Subtasks 2-4. This subtask only
+     lays down the tokens + base typography so every later subtask pulls
+     from the same source of truth instead of hardcoding colors/sizes again.
+     ========================================================================== */
+  :root {
+    /* ---- Brand colors (confirmed palette) ---- */
+    --brand-deep: #0511F2;   /* primary brand — headings, price, key accents */
+    --brand-mid:  #0367A6;   /* secondary brand — links, labels, mid-emphasis */
+    --brand-cyan: #0BC4D9;   /* accent — badges, borders, highlights */
+    --brand-gray: #595959;   /* body/secondary text */
+    --brand-ink:  #0D0D0D;   /* near-black — strongest text emphasis */
+
+    /* ---- Neutral surface colors ---- */
+    --bg-light:    #F7F9FC;  /* page/section tint background */
+    --bg-lighter:  #FBFCFE;  /* card background tint */
+    --text-primary:   var(--brand-ink);
+    --text-secondary: var(--brand-gray);
+    --border-color: #E2E6EC;
+
+    /* ---- Shadows (Playwright supports box-shadow — WeasyPrint did not) ---- */
+    --shadow-sm: 0 1px 3px rgba(13, 13, 13, 0.08);
+    --shadow-md: 0 4px 12px rgba(13, 13, 13, 0.12);
+    --shadow-lg: 0 8px 24px rgba(13, 13, 13, 0.16);
+
+    /* ---- Spacing scale (4px increments) ---- */
+    --sp-4:  4px;
+    --sp-8:  8px;
+    --sp-12: 12px;
+    --sp-16: 16px;
+    --sp-20: 20px;
+    --sp-24: 24px;
+    --sp-32: 32px;
+
+    /* ---- Typography scale ---- */
+    --fs-h1: 32px;
+    --fs-h2: 24px;
+    --fs-h3: 20px;
+    --fs-h4: 16px;
+    --fs-body: 14px;
+    --fs-small: 12px;
+    --fs-xsmall: 11px;
+
+    --fw-regular:  400;
+    --fw-medium:   500;
+    --fw-semibold: 600;
+    --fw-bold:     700;
+
+    --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+
+  /* ---- Base element styles ---- */
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-stack);
+    font-size: var(--fs-body);
+    line-height: 1.55;
+    color: var(--text-primary);
+    background: #FFFFFF;
+    margin: 0;
+  }
+
+  h1 {
+    font-size: var(--fs-h1);
+    font-weight: var(--fw-bold);
+    color: var(--brand-deep);
+    margin: 0 0 var(--sp-4) 0;
+    line-height: 1.25;
+  }
+  h2 {
+    font-size: var(--fs-h2);
+    font-weight: var(--fw-semibold);
+    color: var(--brand-deep);
+    margin-top: var(--sp-32);
+    margin-bottom: var(--sp-12);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: var(--sp-8);
+  }
+  h3 {
+    font-size: var(--fs-h3);
+    font-weight: var(--fw-semibold);
+    color: var(--text-primary);
+    margin: var(--sp-16) 0 var(--sp-8) 0;
+  }
+  h4 {
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-medium);
+    color: var(--text-primary);
+    margin: var(--sp-12) 0 var(--sp-4) 0;
+  }
+  p {
+    font-size: var(--fs-body);
+    color: var(--text-secondary);
+    margin: 0 0 var(--sp-8) 0;
+  }
+
+  table { border-collapse: collapse; width: 100%; margin-top: var(--sp-8); }
+  td, th {
+    border: 1px solid var(--border-color);
+    padding: var(--sp-4) var(--sp-8);
+    text-align: left;
+    font-size: var(--fs-small);
+  }
+
+  ul {
+    margin: var(--sp-4) 0 0 0;
+    padding-left: var(--sp-20);
+  }
+  li {
+    font-size: var(--fs-body);
+    color: var(--text-secondary);
+    margin-bottom: var(--sp-4);
+  }
+
+  a {
+    color: var(--brand-mid);
+    text-decoration: underline;
+  }
+  a:hover { color: var(--brand-deep); }
+
+  .meta-block { margin-bottom: var(--sp-4); }
+  .label { color: var(--brand-gray); font-weight: var(--fw-medium); }
+
+  /* ---- Carried over from Phase 2 as-is (unstyled by the new system yet) ----
+     These rules are UNTOUCHED in Subtask 1 on purpose: the timeline/card
+     visuals are Subtask 3's job. Keeping them here means the PDF still
+     renders correctly right now — nothing regresses between subtasks. */
+  .stop-card {
+    background: #f6f6f6;
+    border-left: 4px solid #888;
+    border-radius: 6px;
+    padding: 10px 16px;
+    margin: 12px 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .stop-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .stop-location {
+    font-size: 14px;
+    font-weight: bold;
+  }
+  .stop-dates {
+    font-size: 11.5px;
+    color: #555;
+    margin-top: 2px;
+  }
+  .nights-badge {
+    display: inline-block;
+    background: #ddd;
+    color: #333;
+    border-radius: 12px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: bold;
+    white-space: nowrap;
+  }
+  .stop-card ul {
+    margin: 8px 0 0 18px;
+    padding: 0;
+  }
+  .transfer-row {
+    text-align: center;
+    font-size: 12px;
+    color: #666;
+    margin: 6px 0;
+    padding: 2px 0;
+  }
+  .transfer-row .arrow {
+    font-size: 13px;
+    margin: 0 6px;
+    color: #999;
+  }
+  .transfer-row .mode {
+    font-style: italic;
+    color: #333;
+  }
+
+  /* ==========================================================================
+     PHASE A1 — COVER PAGE
+     Full-A4 destination hero that is ALWAYS page 1 of the PDF.
+
+     Two variants controlled by the Jinja2 cover_image_path variable:
+       .cover-page--image    – destination photo fills the div; a brand-deep
+                               gradient overlay fades in toward the bottom so
+                               white text stays legible against any photo.
+       .cover-page--gradient – no photo exists yet; renders a diagonal
+                               brand-color gradient (deep → mid → cyan) that
+                               looks intentional rather than broken.
+
+     Color note: text is #FFFFFF in both variants. The spec referenced
+     var(--brand-deep) for the country name, but the gradient background IS
+     brand-deep — dark-on-dark would be invisible. White text matches the
+     Thailand reference PDF and is readable over any photo with the overlay.
+     Phase E polish can revisit if light-colored destination photos are added.
+
+     Height: 277mm = A4 (297mm) minus PDF_MARGIN top + bottom (2 × 10mm).
+     This fills exactly one content-page height at the configured margins,
+     so the break-after: page push works cleanly.
+     ========================================================================== */
+
+  .cover-page {
+    position: relative;
+    width: 100%;
+    height: 277mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;   /* text block anchored to bottom of hero */
+    overflow: hidden;
+    page-break-after: always;    /* legacy — WebKit/Blink both honour this */
+    break-after: page;           /* modern spec */
+  }
+
+  /* Gradient fallback — renders when no static/destinations/{Country}.jpg exists */
+  .cover-page--gradient {
+    background: linear-gradient(
+      160deg,
+      var(--brand-deep) 0%,
+      var(--brand-mid)  55%,
+      var(--brand-cyan) 100%
+    );
+  }
+
+  /* Hero image — absolutely fills the cover div */
+  .cover-hero-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+
+  /* Darkening overlay over photos so text is readable regardless of image brightness */
+  .cover-page--image::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(5, 17, 242, 0.08) 0%,
+      rgba(5, 17, 242, 0.72) 100%
+    );
+    z-index: 1;
+  }
+
+  /* Text block — sits above both the image and its overlay */
+  .cover-text-block {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    width: 100%;
+    padding: var(--sp-24) var(--sp-32) var(--sp-20) var(--sp-32);
+  }
+
+  /* "[Customer name]'s trip to" — subtitle line above the country name */
+  .cover-customer-name {
+    font-size: 22px;
+    font-weight: var(--fw-regular);
+    color: rgba(255, 255, 255, 0.88);
+    margin: 0 0 var(--sp-8) 0;
+    letter-spacing: 0.3px;
+  }
+
+  /* "Thailand / Vietnam / …" — the main hero text */
+  .cover-country-name {
+    font-size: 64px;
+    font-weight: var(--fw-bold);
+    color: #FFFFFF;
+    margin: 0;
+    line-height: 1.05;
+    letter-spacing: -1px;
+  }
+
+  /* ==========================================================================
+     PHASE A2 — TRIP SUMMARY + AGENT CARD
+     2-column row that sits below the hero text block, still inside
+     .cover-page, above the page break. Uses z-index: 2 to stay above
+     the hero image and its overlay (same layer as .cover-text-block).
+
+     Left  column (.cover-summary-section) — "Trip at a Glance"
+     Right column (.cover-agent-card)       — "Curated by" agent details
+
+     All colors, spacing, and typography pull from design tokens only.
+     No hardcoded hex values below this comment.
+     ========================================================================== */
+
+  /* Outer 2-column flex container */
+  .cover-summary-agent {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: var(--sp-16);
+    padding: 0 var(--sp-32) var(--sp-24) var(--sp-32);
+  }
+
+  /* ---- Left column: Trip at a Glance ---- */
+  .cover-summary-section {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: var(--sp-16) var(--sp-20);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+
+  .cover-summary-title {
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-semibold);
+    color: var(--brand-cyan);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin: 0 0 var(--sp-12) 0;
+  }
+
+  /* Each detail row: label above value */
+  .cover-summary-item {
+    margin-bottom: var(--sp-8);
+  }
+
+  .cover-summary-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .cover-summary-label {
+    display: block;
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-medium);
+    color: rgba(255, 255, 255, 0.60);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 2px;
+  }
+
+  .cover-summary-value {
+    display: block;
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+    color: #FFFFFF;
+    line-height: 1.35;
+  }
+
+  /* ---- Right column: Agent Card ---- */
+  .cover-agent-card {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 8px;
+    padding: var(--sp-16) var(--sp-20);
+    border-left: 4px solid var(--brand-cyan);
+    box-shadow: var(--shadow-md);
+  }
+
+  .cover-agent-curated-label {
+    font-size: var(--fs-xsmall);
+    font-style: italic;
+    color: var(--text-secondary);
+    margin: 0 0 var(--sp-4) 0;
+    display: block;
+  }
+
+  .cover-agent-name {
+    font-size: 18px;
+    font-weight: var(--fw-bold);
+    color: var(--brand-deep);
+    margin: 0 0 var(--sp-8) 0;
+    line-height: 1.2;
+  }
+
+  /* Each agent detail row: label + value inline */
+  .cover-agent-detail {
+    margin-bottom: var(--sp-4);
+  }
+
+  .cover-agent-detail:last-child {
+    margin-bottom: 0;
+  }
+
+  .cover-agent-detail-label {
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-medium);
+    color: var(--text-secondary);
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 1px;
+  }
+
+  .cover-agent-detail-value {
+    font-size: var(--fs-small);
+    color: var(--brand-gray);
+    display: block;
+    line-height: 1.3;
+  }
+
+  .cover-agent-quotation-date {
+    margin-top: var(--sp-8);
+    padding-top: var(--sp-8);
+    border-top: 1px solid var(--border-color);
+  }
+
+  .cover-agent-quotation-label {
+    font-size: var(--fs-xsmall);
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 1px;
+  }
+
+  .cover-agent-quotation-value {
+    font-size: var(--fs-xsmall);
+    color: var(--brand-gray);
+    display: block;
+  }
+  /* ===================================================================
+     PHASE B — HIGHLIGHTS GRID + COST BLOCK
+     Replaces the plain <ul> that was under <h2>Highlights</h2>.
+     All colors via CSS tokens only — zero hardcoded hex values.
+     =================================================================== */
+
+  .highlights-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-12);
+    margin-bottom: var(--sp-16);
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .hl-tile {
+    flex: 1;
+    min-width: 80px;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-top: 3px solid var(--brand-cyan);
+    border-radius: 8px;
+    padding: var(--sp-16);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .hl-tile-icon {
+    font-size: 24px;
+    margin-bottom: var(--sp-8);
+    line-height: 1;
+  }
+
+  .hl-tile-value {
+    font-size: var(--fs-h3);
+    font-weight: var(--fw-bold);
+    color: var(--brand-deep);
+    line-height: 1.1;
+    margin-bottom: var(--sp-4);
+  }
+
+  .hl-tile-label {
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-medium);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .hl-cost-block {
+    background: var(--bg-lighter);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--brand-deep);
+    border-radius: 8px;
+    padding: var(--sp-16) var(--sp-20);
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .hl-cost-label {
+    display: block;
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-medium);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: var(--sp-8);
+  }
+
+  .hl-cost-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-12);
+  }
+
+  .hl-cost-amount {
+    font-size: 22px;
+    font-weight: var(--fw-bold);
+    color: var(--brand-deep);
+    line-height: 1;
+  }
+
+  .hl-cost-pax {
+    font-size: var(--fs-body);
+    color: var(--text-secondary);
+    font-weight: var(--fw-regular);
+  }
+</style>
+</head>
+<body>
+
+  
+  
+  <div class="cover-page cover-page--gradient">
+    <div class="cover-text-block">
+      <p class="cover-customer-name">Aarav Mehta's trip to</p>
+      <h1 class="cover-country-name">Thailand</h1>
+    </div>
+    
+    <div class="cover-summary-agent">
+
+      
+      <div class="cover-summary-section">
+        <p class="cover-summary-title">Trip at a Glance</p>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Customer</span>
+          <span class="cover-summary-value">Aarav Mehta</span>
+        </div>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Departure Date</span>
+          <span class="cover-summary-value"></span>
+        </div>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Duration</span>
+          <span class="cover-summary-value">5 Nights / 6 Days</span>
+        </div>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Routing</span>
+          <span class="cover-summary-value">
+            
+            &rarr; 
+            &rarr; Return via 
+          </span>
+        </div>
+      </div>
+
+      
+      <div class="cover-agent-card">
+        <span class="cover-agent-curated-label">Curated by</span>
+        <p class="cover-agent-name">Sample Holidays Agent</p>
+
+        <div class="cover-agent-detail">
+          <span class="cover-agent-detail-label">Phone</span>
+          <span class="cover-agent-detail-value">9876543210</span>
+        </div>
+
+        <div class="cover-agent-detail">
+          <span class="cover-agent-detail-label">Email</span>
+          <span class="cover-agent-detail-value">agent.name@example-ota.in</span>
+        </div>
+
+        <div class="cover-agent-quotation-date">
+          <span class="cover-agent-quotation-label">Quotation created on</span>
+          <span class="cover-agent-quotation-value">24 Jun 2026, 03:15 PM</span>
+        </div>
+      </div>
+
+    </div>
+    
+  </div>
+  
+
+  <h1>Aarav Mehta's trip to Thailand</h1>
+  <div class="meta-block">
+    <strong>5N / 6D</strong> &middot; 
+    Routing: Indira Gandhi International Airport (DEL) — New Delhi 
+    <span style="color: var(--brand-cyan); font-weight: bold;">&rarr;</span> Phuket International Airport (HKT) — Phuket 
+    <span style="color: var(--brand-gray);">|</span> Return via: Suvarnabhumi Airport (BKK) — Bangkok 
+    &middot; Departing on: <strong>2026-08-07</strong>
+  </div>
+  <div class="meta-block">5N / 6D &middot; Departing from Indira Gandhi International Airport (DEL) — New Delhi on 2026-08-07</div>
+
+  <div class="meta-block">
+    <span class="label">Curated by:</span>
+    Sample Holidays Agent &middot; 9876543210 &middot; agent.name@example-ota.in
+  </div>
+  <div class="meta-block">
+    <span class="label">Quotation created on:</span> 24 Jun 2026, 03:15 PM
+  </div>
+  <div class="meta-block">
+    <span class="label">Total cost:</span> ₹ 1,68,000 for 4 (2 Adults, 2 Kids)
+  </div>
+
+  <h2>Tax Collected at Source (TCS)</h2>
+  
+    <p>TCS is mandatory for International Travel Packages</p>
+  
+    <p>20% TCS is applicable on individual transactions above Rs. 10,00,000 per annum</p>
+  
+    <p>As per Union Budget 2025, 5% TCS will be applicable on International travel packages up to Rs. 10,00,000 (excluding TCS) against each PAN in a financial year (FY). Above this limit, TCS will be applicable at 20% on the incremental amount.</p>
+  
+    <p>TCS is neither a cost nor additional tax, it can be fully adjusted against income tax liability and excess, if any, can be claimed as a refund.</p>
+  
+
+  <h2>Highlights</h2>
+  
+  <div class="highlights-grid">
+
+    <div class="hl-tile">
+      <span class="hl-tile-icon">✈</span>
+      <span class="hl-tile-value">2</span>
+      <span class="hl-tile-label">Flights</span>
+    </div>
+
+    <div class="hl-tile">
+      <span class="hl-tile-icon">🏨</span>
+      <span class="hl-tile-value">2</span>
+      <span class="hl-tile-label">Hotels</span>
+    </div>
+
+    <div class="hl-tile">
+      <span class="hl-tile-icon">🎯</span>
+      <span class="hl-tile-value">4</span>
+      <span class="hl-tile-label">Activities</span>
+    </div>
+
+    <div class="hl-tile">
+      <span class="hl-tile-icon">🚗</span>
+      <span class="hl-tile-value">3</span>
+      <span class="hl-tile-label">Transfers</span>
+    </div>
+
+    
+
+    
+    <div class="hl-tile">
+      <span class="hl-tile-icon">🛡️</span>
+      <span class="hl-tile-value">Included</span>
+      <span class="hl-tile-label">Insurance</span>
+    </div>
+    
+
+  </div>
+
+  
+  <div class="hl-cost-block">
+    <span class="hl-cost-label">Total Package Cost</span>
+    <div class="hl-cost-row">
+      <span class="hl-cost-amount">₹ 1,68,000</span>
+      <span class="hl-cost-pax">4 (2 Adults, 2 Kids)</span>
+    </div>
+  </div>
+
+  <h2>Your Itinerary</h2>
+  
+    
+      <div class="transfer-row">
+        Phuket Airport (Thailand)
+        <span class="arrow">&rarr;</span>
+        Krabi (Thailand)
+        &middot; <span class="mode">Private Cab</span>
+      </div>
+    
+  
+    
+      <div class="stop-card">
+        <div class="stop-header">
+          <span class="stop-location">Krabi, Thailand</span>
+          <span class="nights-badge">2 Nights</span>
+        </div>
+        <div class="stop-dates">07/08/2026 &ndash; 09/08/2026</div>
+        <ul>
+          
+            <li>Krabi 4 Island Tour</li>
+          
+            <li>Phra Nang Cave Beach Visit</li>
+          
+        </ul>
+
+        
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;">
+          <h4 style="margin: 0 0 8px 0; font-size: 14px;">Hotel &amp; Accommodation</h4>
+          <p style="margin: 4px 0; font-size: 13px;"><strong>Railay Bay Resort & Spa</strong> (4-Star)</p>
+          <p style="margin: 4px 0; font-size: 13px;"><strong>Room Type:</strong> Deluxe Room</p>
+          <p style="margin: 4px 0; font-size: 13px;"><strong>Meals Included:</strong> Breakfast, Dinner</p>
+          
+          <p style="margin: 4px 0 0 0; font-size: 13px;"><strong>Amenities:</strong></p>
+          <ul style="margin: 4px 0 0 16px; padding-left: 16px;">
+            
+            <li style="margin-bottom: 2px;">Swimming Pool Access</li>
+            
+            <li style="margin-bottom: 2px;">Free Wifi</li>
+            
+            <li style="margin-bottom: 2px;">Beachfront Access</li>
+            
+          </ul>
+          
+        </div>
+        
+      </div>
+    
+  
+    
+      <div class="transfer-row">
+        Krabi (Thailand)
+        <span class="arrow">&rarr;</span>
+        Phuket (Thailand)
+        &middot; <span class="mode">Private Cab</span>
+      </div>
+    
+  
+    
+      <div class="stop-card">
+        <div class="stop-header">
+          <span class="stop-location">Phuket, Thailand</span>
+          <span class="nights-badge">3 Nights</span>
+        </div>
+        <div class="stop-dates">09/08/2026 &ndash; 12/08/2026</div>
+        <ul>
+          
+            <li>Phi Phi Island Tour by Big Boat</li>
+          
+            <li>Patong Beach Evening</li>
+          
+        </ul>
+
+        
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;">
+          <h4 style="margin: 0 0 8px 0; font-size: 14px;">Hotel &amp; Accommodation</h4>
+          <p style="margin: 4px 0; font-size: 13px;"><strong>The Pavilion Hotel</strong> (5-Star)</p>
+          <p style="margin: 4px 0; font-size: 13px;"><strong>Room Type:</strong> Suite</p>
+          <p style="margin: 4px 0; font-size: 13px;"><strong>Meals Included:</strong> Breakfast, Lunch, Dinner</p>
+          
+          <p style="margin: 4px 0 0 0; font-size: 13px;"><strong>Amenities:</strong></p>
+          <ul style="margin: 4px 0 0 16px; padding-left: 16px;">
+            
+            <li style="margin-bottom: 2px;">Swimming Pool Access</li>
+            
+            <li style="margin-bottom: 2px;">Private Beach Front</li>
+            
+            <li style="margin-bottom: 2px;">Spa Services</li>
+            
+          </ul>
+          
+        </div>
+        
+      </div>
+    
+  
+    
+      <div class="transfer-row">
+        Phuket (Thailand)
+        <span class="arrow">&rarr;</span>
+        Phuket Airport (Thailand)
+        &middot; <span class="mode">Private Cab</span>
+      </div>
+    
+  
+
+  <h2>Places Covered</h2>
+  <ul>
+    
+      <li>Thailand: Phuket, Krabi</li>
+    
+  </ul>
+
+  <h2>TCS Credit &amp; Refund</h2>
+  <ul>
+    
+      <li>TCS credit would reflect in your Form 26AS on quarterly basis. You may also request a TCS certificate from EMT.</li>
+    
+      <li>Charged TCS can be claimed against the tax payable at the time of filing the return.</li>
+    
+      <li>In case there is no tax payable, you can claim the refund of TCS amount at the time of filing income tax return.</li>
+    
+  </ul>
+
+  
+
+  <h2>Terms &amp; Conditions</h2>
+  <ul>
+    
+      <li>Above given quote is valid for 72 Hours. Please ask for a new quotation if the booking is not made within 72 Hours.</li>
+    
+      <li>Above given quote is tentative and is subject to change depending on the availabilities along with prices at the time of making the advance payment ahead.</li>
+    
+      <li>Rate of Exchange will be calculated XE.com + 2 Rs.</li>
+    
+      <li>Any change in Pricing, Hotels, Sightseeing's & Airlines due to the availability or unforeseen circumstances, will be conveyed to you within 24 hours after you have paid the booking amount.</li>
+    
+      <li>Payments against your package strictly has to be paid as per the payment conditions mentioned if the payment is not made accordingly, we may have to cancel all your services / bookings.</li>
+    
+      <li>Booking Amount is Non-Refundable</li>
+    
+      <li>Please make sure your Passport is valid for minimum 6 months from date of return to India.</li>
+    
+      <li>Issuance or delay of your visa will be sole discretion of embassy and EaseMyTrip will not be responsible for the same. If your visa gets rejected or delayed embassy's end the cancellation will be applicable as per the cancellation policy.</li>
+    
+      <li>As per the new Govt. Norms 20% TCS is applicable from 1st Oct 2023 on all the payments made, if your total billing of overseas travel exceeds 7 Lakhs in a financial year. For any further clarification please contact your sale's agent. Please note we require your Signature on TCS Declaration form at the time of booking, same has to be sent back to us with your signatures on the same. If TCS Declaration form is not shared by the sale's agent with you at the time of booking, please ask for the same.</li>
+    
+      <li>City Tax if applicable is directly payable at the hotel.</li>
+    
+      <li>Your tour package will start after reaching the destination, we will not be providing any services within India.</li>
+    
+      <li>Check-in time in most of the hotels will be 2 PM and check-out time in most of the hotels will be 11 AM.</li>
+    
+      <li>Early Check in and Late Check out is not the part of the package hence if required, against same need to be paid over and above the given cost.</li>
+    
+      <li>Rooms, Sightseeing and Flight Tickets are Subject to availability at the time of booking.</li>
+    
+      <li>We will not be responsible for loss of any valuables you will be carrying along with you during the tour.</li>
+    
+      <li>We strongly recommend to take travel insurance for your tour duration to avoid any hassles caused due to unforeseen circumstances.</li>
+    
+      <li>Any increase in Gov. Taxes, Airfare, Fuel Surcharge & Airlines taxes charged by the airlines on the air ticket before the issuance of flight tickets, the same shall be charged extra irrespective of the booking date.</li>
+    
+      <li>Peak season, weekend and special event surcharges if any, will be applicable over and above the given costing.</li>
+    
+      <li>All personal expenses, optional tours and extra meals has to be paid directly.</li>
+    
+      <li>Portages at Hotels, Airport & Sea Ports is not the part of given holiday package.</li>
+    
+      <li>Due to any unforeseen circumstances or natural calamities which cause any changes or cancellation in your itinerary, Sightseeing's / activities, transfers --- no refund or compensation will be provided against the same.</li>
+    
+      <li>There will be no refund for the unused and unutilized services.</li>
+    
+      <li>RT-PCR (if required) need to be taken within 48 hours from Departure Date.</li>
+    
+      <li>Anything not mentioned in the inclusions has to be paid directly or in advance (if added or availed).</li>
+    
+      <li>Required OTB for ECR Passport depending on Destination you flying to.</li>
+    
+      <li>Note: Double-Dose Vaccination Certificate is mandatory to carry for international travel.</li>
+    
+      <li>Rates are based on today's ROE (Rate of Exchange) and final ROE will be calculated at the time of making the final/total Payment against your Tour Package.</li>
+    
+  </ul>
+
+  <!--
+    Cancellation Policy section intentionally omitted (Phase 3, confirmed
+    gap): no standalone generic Cancellation Policy document exists at
+    the company. Showing a fake or empty section to a real customer
+    would be worse than omitting it. Revisit if/when one is created —
+    see static_content.py header comment.
+  -->
+
+</body>
+</html>

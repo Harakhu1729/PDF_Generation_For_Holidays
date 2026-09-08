@@ -13,13 +13,26 @@ All 5 previously-stubbed fields are now real (Subtask 4.2):
   - curated_by : pulled from the new agent_name / agent_phone /
     agent_email columns; falls back to empty string if not entered.
  
+Phase A2 additions:
+  - cover_departure_date_display : "07 Aug 2026" formatted from YYYY-MM-DD.
+  - cover_departure_city_display : "Mumbai (BOM)" extracted from full
+    airport string via _short_airport(), used in the cover routing line.
+  - cover_arrival_airport_display : same extraction for arrival airport.
+  - cover_return_airport_display  : same extraction for return airport.
+
+Phase A1/E1 addition:
+  - cover_image_path : the cover hero image as an inlined data: URI, resolved
+    from the first country in places_to_cover, or None when no file exists.
+    See image_resolver.py for why it is inlined rather than referenced.
+ 
 Airport <-> hotel transfer legs arrive as ordinary booking_transfer rows
 (same table as inter-stop transfers) — no special handling needed here.
 """
  
+
 from datetime import datetime
 from main import BookingRecord
- 
+from image_resolver import resolve_image_path
  
  
 # ---------------------------------------------------------------------------
@@ -60,7 +73,6 @@ def _build_pax_label(
     e.g. "4 (2 Adults, 2 Kids)"  or  "3 (3 Adults)"
     Falls back to "TBD" if data is missing (all four args are None/empty).
     """
-    # If we have no data at all, return TBD rather than "0"
     if all(v is None or v == "" for v in (total_pax, adults, kids, infants)):
         return "TBD"
     try:
@@ -79,8 +91,30 @@ def _build_pax_label(
     if not parts:
         return str(total)
     return f"{total} ({', '.join(parts)})"
- 
- 
+
+
+
+def _short_airport(full_string: str | None) -> str:
+    """
+    Extract a short display label from a full airport string for the cover card.
+    e.g. "Noi Bai International Airport (HAN) — Hanoi"  ->  "Hanoi (HAN)"
+         "Indira Gandhi International Airport (DEL) — New Delhi"  ->  "New Delhi (DEL)"
+         None  ->  ""
+    Parsing rule: take the city name after " — " and the IATA code inside "()".
+    Falls back to the full string if either part can't be parsed.
+    """
+    if not full_string:
+        return ""
+    try:
+        # Extract IATA code: text inside the first pair of parentheses
+        iata = full_string.split("(")[1].split(")")[0]
+        # Extract city name: text after the em-dash " — "
+        city = full_string.split(" — ")[1].strip()
+        return f"{city} ({iata})"
+    except (IndexError, AttributeError):
+        return full_string
+
+
 def map_booking_record_to_dict(record: BookingRecord) -> dict:
     # --- places_to_cover: { "Vietnam": ["Ho Chi Minh City", "Hoi An"] } ---
     places_dict = {}
@@ -121,7 +155,6 @@ def map_booking_record_to_dict(record: BookingRecord) -> dict:
                 "country": s.country,
                 "location": s.location,
                 "nights": s.nights,
-                # NEW: Hotel details mapping
                 "hotel_name": s.hotel_name or "",
                 "hotel_star_rating": s.hotel_star_rating or 0,
                 "hotel_room_type": s.hotel_room_type or "",
@@ -134,7 +167,7 @@ def map_booking_record_to_dict(record: BookingRecord) -> dict:
         ],
         key=lambda x: x["stop_order"],
     )
- 
+
     return {
         "id": record.id,
         "customer_name": record.customer_name,
@@ -157,11 +190,6 @@ def map_booking_record_to_dict(record: BookingRecord) -> dict:
         "travel_insurance_included": record.travel_insurance_included,
  
         # ----- Subtask 4.2: real values (no more stubs) -----
- 
-        # total_package_cost: stored as plain integer (INR, no decimals).
-        # _display formats it as Indian-style currency string if present.
-        # _pax_label builds e.g. '4 (2 Adults, 2 Kids, 0 Infants)' from
-        # existing pax columns so no extra DB column is needed.
         "total_package_cost": record.total_package_cost,
         "total_package_cost_display": _format_inr(record.total_package_cost),
         "total_package_cost_pax_label": _build_pax_label(
@@ -170,15 +198,26 @@ def map_booking_record_to_dict(record: BookingRecord) -> dict:
             record.number_of_kids,
             record.number_of_infants,
         ),
- 
-        # Generated fresh at the moment this function is called.
-        # Every PDF download shows the current timestamp (refresh-on-download).
         "quotation_created_on": datetime.now().strftime("%d %b %Y, %I:%M %p"),
- 
-        # Agent details: optional, fall back to empty string if not captured.
         "curated_by": {
             "name":  record.agent_name  or "",
             "phone": record.agent_phone or "",
             "email": record.agent_email or "",
         },
+
+        # ----- Phase A2: cover page display fields -----
+        # Short labels for the "Trip at a Glance" card on the cover page.
+        # Derived from existing fields — no new DB columns needed.
+        "cover_departure_date_display": (
+            datetime.strptime(record.date_of_departure, "%Y-%m-%d").strftime("%d %b %Y")
+            if record.date_of_departure else ""
+        ),
+        "cover_departure_city_display": _short_airport(record.departure_city),
+        "cover_arrival_airport_display": _short_airport(record.arrival_airport),
+        "cover_return_airport_display": _short_airport(record.return_airport),
+
+        # ----- Phase A1/E1 (defect D5): cover hero image -----
+        # Inlined data: URI for static/destinations/{Country}.jpg, or None
+        # when no image exists — the template then renders the gradient cover.
+        "cover_image_path": resolve_image_path(next(iter(places_dict), "")),
     }

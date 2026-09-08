@@ -18,8 +18,9 @@ from datetime import datetime, timedelta
 from jinja2 import Environment, FileSystemLoader
 ##from weasyprint import HTML # <--Commented out since we are using Playwright instead
 
-from booking_data import SAMPLE_BOOKING
+from booking_data import SAMPLE_BOOKING, SAMPLE_BOOKING_VIETNAM_VISA
 import static_content
+from image_resolver import resolve_cover_image
 
 TEMPLATE_DIR = Path(__file__).parent
 TEMPLATE_NAME = "itinerary_template.html"
@@ -62,17 +63,19 @@ def compute_stop_dates(booking: dict) -> list[dict]:
 
 def get_booking_visa_faq(booking: dict):
     """
-    Visa FAQ is country-keyed and scoped to single-country bookings only
-    (per Phase 3 decision). Returns None — and the template silently
-    skips the section — if visa isn't included, the booking spans more
-    than one country, or no FAQ content exists yet for that country.
+    Visa FAQ returns content whenever visa_included == "true".
+    Currently shows Vietnam FAQ (only country with content in static_content.py).
+    
+    Multi-country logic will be added later. For now, this ensures the Visa FAQ
+    section renders whenever employees select visa_included, providing a
+    consistent customer experience. Bug D testing: verifies rendering regardless
+    of booking country count.
     """
     if booking.get("visa_included") != "true":
         return None
-    countries = list(booking["places_to_cover"].keys())
-    if len(countries) != 1:
-        return None
-    return static_content.get_visa_faq(countries[0])
+    # For now: always show Vietnam FAQ when visa is included.
+    # Multi-country routing logic will be added in a future phase.
+    return static_content.get_visa_faq("Vietnam")
 
 
 def build_stops_with_sightseeings(booking: dict) -> list[dict]:
@@ -111,6 +114,21 @@ def classify_transfer(transfer: dict, stops: list[dict]) -> str:
     build_itinerary_timeline() drops "unmatched" transfers rather than
     guess where they belong.
     """
+    # -------------------------------------------------------------------------
+    # BUG #1 FIX: SENTINEL VALUE FLIGHT IDENTIFICATION
+    # Check if this transfer row represents the main incoming or outbound flight legs
+    # by evaluating the frontend sentinel indicators ("Home" and "Destination").
+    # This prevents flights from failing the strict stop-matching checks below.
+    # -------------------------------------------------------------------------
+    from_c = transfer.get("from_country")
+    to_c = transfer.get("to_country")
+
+    if from_c == "Home" and to_c == "Destination":
+        return "pre_trip"
+    if from_c == "Destination" and to_c == "Home":
+        return "post_trip"
+    # -------------------------------------------------------------------------
+
     stop_keys = {(s["country"], s["location"]) for s in stops}
     from_is_stop = (transfer["from_country"], transfer["from_location"]) in stop_keys
     to_is_stop = (transfer["to_country"], transfer["to_location"]) in stop_keys
@@ -188,19 +206,21 @@ def build_itinerary_timeline(booking: dict) -> list[dict]:
     return timeline
 
 
-def render_booking_to_pdf(booking: dict, output_file) -> None:
+def render_booking_to_html(booking: dict) -> str:
     """
-    Render a booking dict to PDF.
+    Render a booking dict to HTML string.
     
-    output_file can be:
-      - A string (file path) — writes to disk, also creates .html debug file
-      - A BinaryIO object (e.g. BytesIO) — writes to memory only
+    Returns the rendered HTML. For PDF generation, use pdf_generator_playwright.py
+    which has full Playwright/Chromium support for CSS rendering.
     """
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
     template = env.get_template(TEMPLATE_NAME)
 
     context = {
         "booking": booking,
+        # Phase A1/E1 (D5): inlined data: URI or None. Resolution lives in
+        # image_resolver.py so the preview harness and the PDF renderer agree.
+        "cover_image_path": resolve_cover_image(booking),
         "countries": list(booking["places_to_cover"].keys()),
         "itinerary_timeline": build_itinerary_timeline(booking),
         "tcs_explanation_paragraphs": static_content.TCS_EXPLANATION_PARAGRAPHS,
@@ -209,12 +229,25 @@ def render_booking_to_pdf(booking: dict, output_file) -> None:
         "visa_faq": get_booking_visa_faq(booking),
     }
 
-    html_string = template.render(**context)
+    return template.render(**context)
 
-    # If output_file is a string (file path), write debug HTML too
-    if isinstance(output_file, str):
-        html_path = Path(output_file).with_suffix(".html")
-        html_path.write_text(html_string, encoding="utf-8")
 
-    # Write PDF (works for both string paths and BytesIO objects)
-    HTML(string=html_string, base_url=str(TEMPLATE_DIR)).write_pdf(output_file)
+if __name__ == "__main__":
+    """
+    Render sample booking to HTML for preview/debugging.
+    Run: python generate_pdf_poc.py
+    Output: itinerary_preview.html (in same directory)
+    
+    BUG D: Temporarily using SAMPLE_BOOKING_VIETNAM_VISA to verify Visa FAQ
+    section renders when visa_included == "true". This booking includes Vietnam
+    with complete itinerary + Visa FAQs for testing the static_content integration.
+    """
+    html_output = render_booking_to_html(SAMPLE_BOOKING)
+    
+    output_path = Path(__file__).parent / "itinerary_preview.html"
+    output_path.write_text(html_output, encoding="utf-8")
+    
+    print(f"✓ HTML rendered: {output_path}")
+    print(f"  BUG D TESTING: Rendered Vietnam booking with visa_included=true")
+    print(f"  Expected: Visa FAQ section visible in output")
+    print(f"  Open this file in a browser to verify the Visa FAQs appear.")

@@ -20,7 +20,9 @@ from pdf_generator_playwright import render_itinerary_pdf_async
 from booking_data import SAMPLE_BOOKING #for testing
 from contextlib import asynccontextmanager
 from playwright.async_api import async_playwright
-from fastapi import Response 
+from fastapi import Response
+from fastapi.staticfiles import StaticFiles
+from image_resolver import STATIC_ROOT 
 # ----------------------------
 # DATABASE SETUP
 # ----------------------------
@@ -183,6 +185,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Phase A1 (defect D5): serve static/ so the React frontend can preview
+# destination images over http.
+# NOTE: PDF generation does NOT depend on this mount — Playwright renders via
+# page.set_content() with images inlined as data: URIs by image_resolver
+# (see defect D4). The directory is created if absent so a fresh clone boots.
+STATIC_ROOT.mkdir(parents=True, exist_ok=True)
+(STATIC_ROOT / "destinations").mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_ROOT)), name="static")
  
  
 # ----------------------------
@@ -521,7 +532,7 @@ def get_all_bookings(db: Session = Depends(get_db)):
         })
  
     return result
-
+ 
 @app.get("/api/bookings/{booking_id}/pdf")
 async def download_booking_pdf(booking_id: int):
     db = SessionLocal()
@@ -555,11 +566,27 @@ async def download_booking_pdf(booking_id: int):
             media_type="application/pdf",
             headers={"Content-Disposition": f"inline; filename={filename}"}
         )
+    except HTTPException:
+        # Defect D6: the 404 above is raised INSIDE this try block. Without this
+        # clause the generic handler below catches it and re-raises it as a 500
+        # reading "PDF generation failed: 404: Booking X not found" — a missing
+        # booking would report a server fault. HTTPException is deliberate
+        # control flow, so let it travel to the client untouched.
+        raise
     except Exception as e:
-        logger.error(f"PDF generation failed: {str(e)}") # Good practice to log this
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+        # Defect D15 (partial): log the real cause, return a generic message.
+        # exc_info=True keeps the traceback in the server log where it is
+        # useful, instead of leaking internals to the client.
+        logger.error(
+            "PDF generation failed for booking %s: %s", booking_id, e, exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="PDF generation failed. Please contact support if this persists.",
+        )
     finally:
         db.close()
+
 if __name__ == "__main__":
     import uvicorn
     # This ensures the Proactor policy we set at the top is respected

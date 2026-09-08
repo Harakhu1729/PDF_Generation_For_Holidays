@@ -133,47 +133,9 @@
   .meta-block { margin-bottom: var(--sp-4); }
   .label { color: var(--brand-gray); font-weight: var(--fw-medium); }
 
-  /* ---- Carried over from Phase 2 as-is (unstyled by the new system yet) ----
-     These rules are UNTOUCHED in Subtask 1 on purpose: the timeline/card
-     visuals are Subtask 3's job. Keeping them here means the PDF still
-     renders correctly right now — nothing regresses between subtasks. */
-  .stop-card {
-    background: #f6f6f6;
-    border-left: 4px solid #888;
-    border-radius: 6px;
-    padding: 10px 16px;
-    margin: 12px 0;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-  .stop-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-  }
-  .stop-location {
-    font-size: 14px;
-    font-weight: bold;
-  }
-  .stop-dates {
-    font-size: 11.5px;
-    color: #555;
-    margin-top: 2px;
-  }
-  .nights-badge {
-    display: inline-block;
-    background: #ddd;
-    color: #333;
-    border-radius: 12px;
-    padding: 2px 10px;
-    font-size: 11px;
-    font-weight: bold;
-    white-space: nowrap;
-  }
-  .stop-card ul {
-    margin: 8px 0 0 18px;
-    padding: 0;
-  }
+  /* ---- Phase 2 carry-over: transfer-row rules kept as-is.
+     Stop-card rules (.stop-card, .stop-header, .stop-location, .stop-dates,
+     .nights-badge, .stop-card ul) have been replaced by Phase C1 below. ---- */
   .transfer-row {
     text-align: center;
     font-size: 12px;
@@ -190,11 +152,807 @@
     font-style: italic;
     color: #333;
   }
+
+  /* ==========================================================================
+     PHASE A1 — COVER PAGE
+     Full-A4 destination hero that is ALWAYS page 1 of the PDF.
+
+     Two variants controlled by the Jinja2 cover_image_path variable:
+       .cover-page--image    – destination photo fills the div; a brand-deep
+                               gradient overlay fades in toward the bottom so
+                               white text stays legible against any photo.
+       .cover-page--gradient – no photo exists yet; renders a diagonal
+                               brand-color gradient (deep → mid → cyan) that
+                               looks intentional rather than broken.
+
+     Color note: text is #FFFFFF in both variants. The spec referenced
+     var(--brand-deep) for the country name, but the gradient background IS
+     brand-deep — dark-on-dark would be invisible. White text matches the
+     Thailand reference PDF and is readable over any photo with the overlay.
+     Phase E polish can revisit if light-colored destination photos are added.
+
+     Height: 277mm = A4 (297mm) minus PDF_MARGIN top + bottom (2 × 10mm).
+     This fills exactly one content-page height at the configured margins,
+     so the break-after: page push works cleanly.
+     ========================================================================== */
+
+  .cover-page {
+    position: relative;
+    width: 100%;
+    height: 277mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;   /* text block anchored to bottom of hero */
+    overflow: hidden;
+    page-break-after: always;    /* legacy — WebKit/Blink both honour this */
+    break-after: page;           /* modern spec */
+  }
+
+  /* Gradient fallback — renders when no static/destinations/{Country}.jpg exists */
+  .cover-page--gradient {
+    background: linear-gradient(
+      160deg,
+      var(--brand-deep) 0%,
+      var(--brand-mid)  55%,
+      var(--brand-cyan) 100%
+    );
+  }
+
+  /* Hero image — absolutely fills the cover div */
+  .cover-hero-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+
+  /* Darkening overlay over photos so text is readable regardless of image brightness */
+  .cover-page--image::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(5, 17, 242, 0.08) 0%,
+      rgba(5, 17, 242, 0.72) 100%
+    );
+    z-index: 1;
+  }
+
+  /* Text block — sits above both the image and its overlay */
+  .cover-text-block {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    width: 100%;
+    padding: var(--sp-24) var(--sp-32) var(--sp-20) var(--sp-32);
+  }
+
+  /* "[Customer name]'s trip to" — subtitle line above the country name */
+  .cover-customer-name {
+    font-size: 22px;
+    font-weight: var(--fw-regular);
+    color: rgba(255, 255, 255, 0.88);
+    margin: 0 0 var(--sp-8) 0;
+    letter-spacing: 0.3px;
+  }
+
+  /* "Thailand / Vietnam / …" — the main hero text */
+  .cover-country-name {
+    font-size: 64px;
+    font-weight: var(--fw-bold);
+    color: #FFFFFF;
+    margin: 0;
+    line-height: 1.05;
+    letter-spacing: -1px;
+  }
+
+  /* ==========================================================================
+     PHASE A2 — TRIP SUMMARY + AGENT CARD
+     2-column row that sits below the hero text block, still inside
+     .cover-page, above the page break. Uses z-index: 2 to stay above
+     the hero image and its overlay (same layer as .cover-text-block).
+
+     Left  column (.cover-summary-section) — "Trip at a Glance"
+     Right column (.cover-agent-card)       — "Curated by" agent details
+
+     All colors, spacing, and typography pull from design tokens only.
+     No hardcoded hex values below this comment.
+     ========================================================================== */
+
+  /* Outer 2-column flex container */
+  .cover-summary-agent {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: var(--sp-16);
+    padding: 0 var(--sp-32) var(--sp-24) var(--sp-32);
+  }
+
+  /* ---- Left column: Trip at a Glance ---- */
+  .cover-summary-section {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: var(--sp-16) var(--sp-20);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+
+  .cover-summary-title {
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-semibold);
+    color: var(--brand-cyan);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin: 0 0 var(--sp-12) 0;
+  }
+
+  /* Each detail row: label above value */
+  .cover-summary-item {
+    margin-bottom: var(--sp-8);
+  }
+
+  .cover-summary-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .cover-summary-label {
+    display: block;
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-medium);
+    color: rgba(255, 255, 255, 0.60);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 2px;
+  }
+
+  .cover-summary-value {
+    display: block;
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+    color: #FFFFFF;
+    line-height: 1.35;
+  }
+
+  /* ---- Right column: Agent Card ---- */
+  .cover-agent-card {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 8px;
+    padding: var(--sp-16) var(--sp-20);
+    border-left: 4px solid var(--brand-cyan);
+    box-shadow: var(--shadow-md);
+  }
+
+  .cover-agent-curated-label {
+    font-size: var(--fs-xsmall);
+    font-style: italic;
+    color: var(--text-secondary);
+    margin: 0 0 var(--sp-4) 0;
+    display: block;
+  }
+
+  .cover-agent-name {
+    font-size: 18px;
+    font-weight: var(--fw-bold);
+    color: var(--brand-deep);
+    margin: 0 0 var(--sp-8) 0;
+    line-height: 1.2;
+  }
+
+  /* Each agent detail row: label + value inline */
+  .cover-agent-detail {
+    margin-bottom: var(--sp-4);
+  }
+
+  .cover-agent-detail:last-child {
+    margin-bottom: 0;
+  }
+
+  .cover-agent-detail-label {
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-medium);
+    color: var(--text-secondary);
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 1px;
+  }
+
+  .cover-agent-detail-value {
+    font-size: var(--fs-small);
+    color: var(--brand-gray);
+    display: block;
+    line-height: 1.3;
+  }
+
+  .cover-agent-quotation-date {
+    margin-top: var(--sp-8);
+    padding-top: var(--sp-8);
+    border-top: 1px solid var(--border-color);
+  }
+
+  .cover-agent-quotation-label {
+    font-size: var(--fs-xsmall);
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 1px;
+  }
+
+  .cover-agent-quotation-value {
+    font-size: var(--fs-xsmall);
+    color: var(--brand-gray);
+    display: block;
+  }
+  /* ===================================================================
+     PHASE B — HIGHLIGHTS GRID + COST BLOCK
+     Replaces the plain <ul> that was under <h2>Highlights</h2>.
+     All colors via CSS tokens only — zero hardcoded hex values.
+     =================================================================== */
+
+  .highlights-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-12);
+    margin-bottom: var(--sp-16);
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .hl-tile {
+    flex: 1;
+    min-width: 80px;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-top: 3px solid var(--brand-cyan);
+    border-radius: 8px;
+    padding: var(--sp-16);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .hl-tile-icon {
+    font-size: 24px;
+    margin-bottom: var(--sp-8);
+    line-height: 1;
+  }
+
+  .hl-tile-value {
+    font-size: var(--fs-h3);
+    font-weight: var(--fw-bold);
+    color: var(--brand-deep);
+    line-height: 1.1;
+    margin-bottom: var(--sp-4);
+  }
+
+  .hl-tile-label {
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-medium);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .hl-cost-block {
+    background: var(--bg-lighter);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--brand-deep);
+    border-radius: 8px;
+    padding: var(--sp-16) var(--sp-20);
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .hl-cost-label {
+    display: block;
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-medium);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: var(--sp-8);
+  }
+
+  .hl-cost-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-12);
+  }
+
+  .hl-cost-amount {
+    font-size: 22px;
+    font-weight: var(--fw-bold);
+    color: var(--brand-deep);
+    line-height: 1;
+  }
+
+  .hl-cost-pax {
+    font-size: var(--fs-body);
+    color: var(--text-secondary);
+    font-weight: var(--fw-regular);
+  }
+
+  /* ===================================================================
+     PHASE C1 — STOP CARD HEADER BAR
+     White card + shadow replacing the old grey left-bordered card.
+     Brand-deep header bar with stop number badge, pin icon, location,
+     and nights count. Dates strip in bg-light below the bar.
+     All colors via CSS tokens — zero hardcoded hex values.
+     =================================================================== */
+
+  .stop-card {
+    background: #FFFFFF;
+    border: none;
+    border-radius: 10px;
+    box-shadow: var(--shadow-md);
+    margin: 16px 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    overflow: hidden;   /* clips header bar corners to card radius */
+  }
+
+  .stop-header-bar {
+    background: var(--brand-deep);
+    color: #FFFFFF;
+    padding: var(--sp-12) var(--sp-16);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 10px 10px 0 0;
+  }
+
+  .stop-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-8);
+  }
+
+  .stop-number-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    color: var(--brand-deep);
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-bold);
+    flex-shrink: 0;
+  }
+
+  .stop-header-pin {
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .stop-header-location {
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+    color: #FFFFFF;
+  }
+
+  .stop-header-right {
+    display: flex;
+    align-items: center;
+  }
+
+  .stop-header-nights {
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    color: rgba(255, 255, 255, 0.85);
+    white-space: nowrap;
+  }
+
+  .stop-dates-row {
+    font-size: var(--fs-small);
+    color: var(--text-secondary);
+    padding: var(--sp-8) var(--sp-16);
+    background: var(--bg-light);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  /* ===================================================================
+     PHASE C2 — ACTIVITIES LIST WITH ICON TREATMENT
+     Replaces the plain <ul> bullet list inside stop cards.
+     Striped rows (odd white / even bg-light) with 🎯 icon prefix.
+     Hotel block below this list is NOT touched (C3's job).
+     =================================================================== */
+
+  .activity-list {
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .activity-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-8);
+    padding: var(--sp-8) var(--sp-12);
+    font-size: var(--fs-small);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    background: #FFFFFF;
+  }
+
+  .activity-row:last-child {
+    border-bottom: none;
+  }
+
+  .activity-row--even {
+    background: var(--bg-light);
+  }
+
+  .activity-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+  }
+
+  .activity-name {
+    font-size: var(--fs-small);
+    color: var(--text-primary);
+    line-height: 1.4;
+  }
+
+  /* ===================================================================
+     PHASE C3 — HOTEL & ACCOMMODATION BLOCK
+     Reference: MMT Vietnam.pdf pages 8 & 17 ("HOTEL • N Nights • In
+     {location}" label row, star rating row, bold hotel name, bold room
+     type, meal-plan row with fork/knife icon, green-checkmark amenities
+     list). No hotel photo — no destination/hotel imagery exists yet.
+     Sits inside .stop-card, below .activity-list. All colors via CSS
+     tokens only — zero hardcoded hex values.
+     =================================================================== */
+
+  .hotel-block {
+    padding: var(--sp-12) var(--sp-16) var(--sp-16) var(--sp-16);
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .hotel-label-row {
+    font-size: var(--fs-xsmall);
+    font-weight: var(--fw-semibold);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: var(--sp-4);
+  }
+
+  .hotel-star-row {
+    font-size: var(--fs-body);
+    color: var(--brand-deep);
+    letter-spacing: 2px;
+    margin-bottom: var(--sp-4);
+  }
+
+  .hotel-star-row .hotel-star--empty {
+    color: var(--border-color);
+  }
+
+  .hotel-name {
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-bold);
+    color: var(--text-primary);
+    margin: 0 0 var(--sp-4) 0;
+    line-height: 1.3;
+  }
+
+  .hotel-room-type {
+    font-size: var(--fs-small);
+    font-weight: var(--fw-bold);
+    color: var(--text-primary);
+    margin: 0 0 var(--sp-8) 0;
+    line-height: 1.3;
+  }
+
+  .hotel-meal-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-8);
+    font-size: var(--fs-small);
+    color: var(--text-secondary);
+    margin-bottom: var(--sp-8);
+  }
+
+  .hotel-meal-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .hotel-amenities-list {
+    margin: 0;
+    padding: 0;
+  }
+
+  .hotel-amenity-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-8);
+    font-size: var(--fs-small);
+    color: var(--text-secondary);
+    margin-bottom: var(--sp-4);
+  }
+
+  .hotel-amenity-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .hotel-amenity-check {
+    color: var(--brand-mid);
+    font-weight: var(--fw-bold);
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+  }
+
+  /* ===================================================================
+     PHASE D1 — TCS EXPLANATION CARD + TCS CREDIT BLOCK
+     Reference: MMT Vietnam.pdf pages 3 & 20 (page 3: soft tinted rounded
+     card wrapping the TCS explanation paragraphs, first two paragraphs
+     set bold as pseudo-headings; page 20: single card holding three
+     equal columns, each a bold sub-header over a short paragraph).
+
+     Tints are alpha-blended from the existing brand tokens via
+     color-mix() — no new hex values. Every tinted rule declares a flat
+     token background FIRST and the color-mix() value SECOND, so an
+     engine without color-mix() support falls back to a plain neutral
+     card rather than rendering transparent.
+
+     The credit card uses a cool brand wash, NOT the reference's warm
+     rose gradient: the token palette has no warm hue and inventing one
+     would mean a hardcoded hex. Swap to a --brand-warm token if one is
+     ever added to the Phase 5 design system.
+     =================================================================== */
+
+  /* Additive :root — extends the Phase 5 token block (line ~17) without
+     modifying it. Channel triples exist so rgba() can alpha-blend the
+     brand colors directly; kept global so later phases can reuse them. */
+  :root {
+    --brand-cyan-rgb: 11, 196, 217;   /* channels of --brand-cyan #0BC4D9 */
+    --brand-deep-rgb: 5, 17, 242;     /* channels of --brand-deep #0511F2 */
+  }
+
+  /* Keeps each <h2> welded to its card. Without this the card, being
+     unbreakable, jumps to the next page and strands its heading at the
+     foot of the previous one — observed on page 3 of the Thailand
+     sample before this rule. The global h2 rule is untouched; the
+     wrapper carries the constraint instead. */
+  .tcs-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .tcs-explanation-card {
+    background: var(--bg-lighter);
+    background: color-mix(in srgb, var(--brand-cyan) 8%, white);
+    border: 1px solid var(--border-color);
+    border-color: color-mix(in srgb, var(--brand-cyan) 22%, white);
+    border-radius: 10px;
+    padding: var(--sp-20) var(--sp-24);
+    margin-top: var(--sp-4);
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .tcs-explanation-card p {
+    color: var(--text-primary);
+    margin: 0 0 var(--sp-12) 0;
+  }
+
+  .tcs-explanation-card p:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Paragraphs 1 and 2 act as headings on page 3 of the reference. The
+     source copy in static_content.py carries no markup, so the emphasis
+     is applied positionally here rather than by editing legal text. */
+  .tcs-explanation-card p:nth-child(1),
+  .tcs-explanation-card p:nth-child(2) {
+    font-weight: var(--fw-bold);
+  }
+
+  .tcs-credit-card {
+    background: var(--bg-lighter);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--brand-cyan) 6%, white) 0%,
+      color-mix(in srgb, var(--brand-deep) 5%, white) 100%
+    );
+    border: 1px solid var(--border-color);
+    border-color: color-mix(in srgb, var(--brand-deep) 14%, white);
+    border-radius: 10px;
+    padding: var(--sp-20) var(--sp-24);
+    margin-top: var(--sp-4);
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* auto-fit rather than repeat(3, …): TCS_CREDIT_BLOCK_POINTS is three
+     items today, but a 2- or 4-point list must still reflow sensibly. */
+  .tcs-credit-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--sp-16) var(--sp-24);
+  }
+
+  .tcs-credit-col {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .tcs-credit-col-header {
+    font-size: var(--fs-h4);
+    font-weight: var(--fw-bold);
+    color: var(--brand-deep);
+    line-height: 1.3;
+    margin-bottom: var(--sp-8);
+  }
+
+  .tcs-credit-col-text {
+    font-size: var(--fs-small);
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
 </style>
 </head>
 <body>
 
+  {# ── Phase A1: Cover page ──────────────────────────────────────────────────
+     cover_image_path is injected by render_template_to_html() and resolves
+     to a file:// URI if static/destinations/{Country}.jpg exists, else None.
+     Drop a destination JPEG into that folder to activate the image variant.
+     Naming convention: static/destinations/Thailand.jpg, Vietnam.jpg, etc.
+  ── #}
+  {% if cover_image_path %}
+  <div class="cover-page cover-page--image">
+    <img class="cover-hero-img"
+         src="{{ cover_image_path }}"
+         alt="{{ countries|join(', ') }}">
+    <div class="cover-text-block">
+      <p class="cover-customer-name">{{ booking.customer_name }}'s trip to</p>
+      <h1 class="cover-country-name">{{ countries|join(", ") }}</h1>
+    </div>
+    {# ── Phase A2: Trip Summary + Agent Card ───────────────────────────────── #}
+    <div class="cover-summary-agent">
+
+      {# Left column: Trip at a Glance #}
+      <div class="cover-summary-section">
+        <p class="cover-summary-title">Trip at a Glance</p>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Customer</span>
+          <span class="cover-summary-value">{{ booking.customer_name }}</span>
+        </div>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Departure Date</span>
+          <span class="cover-summary-value">{{ booking.cover_departure_date_display }}</span>
+        </div>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Duration</span>
+          <span class="cover-summary-value">{{ booking.total_nights }} Nights / {{ booking.total_days }} Days</span>
+        </div>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Routing</span>
+          <span class="cover-summary-value">
+            {{ booking.cover_departure_city_display }}
+            &rarr; {{ booking.cover_arrival_airport_display }}
+            &rarr; Return via {{ booking.cover_return_airport_display }}
+          </span>
+        </div>
+      </div>
+
+      {# Right column: Agent Card #}
+      <div class="cover-agent-card">
+        <span class="cover-agent-curated-label">Curated by</span>
+        <p class="cover-agent-name">{{ booking.curated_by.name }}</p>
+
+        <div class="cover-agent-detail">
+          <span class="cover-agent-detail-label">Phone</span>
+          <span class="cover-agent-detail-value">{{ booking.curated_by.phone }}</span>
+        </div>
+
+        <div class="cover-agent-detail">
+          <span class="cover-agent-detail-label">Email</span>
+          <span class="cover-agent-detail-value">{{ booking.curated_by.email }}</span>
+        </div>
+
+        <div class="cover-agent-quotation-date">
+          <span class="cover-agent-quotation-label">Quotation created on</span>
+          <span class="cover-agent-quotation-value">{{ booking.quotation_created_on }}</span>
+        </div>
+      </div>
+
+    </div>
+    {# ── End Phase A2 ─────────────────────────────────────────────────────── #}
+  </div>
+  {% else %}
+  <div class="cover-page cover-page--gradient">
+    <div class="cover-text-block">
+      <p class="cover-customer-name">{{ booking.customer_name }}'s trip to</p>
+      <h1 class="cover-country-name">{{ countries|join(", ") }}</h1>
+    </div>
+    {# ── Phase A2: Trip Summary + Agent Card ───────────────────────────────── #}
+    <div class="cover-summary-agent">
+
+      {# Left column: Trip at a Glance #}
+      <div class="cover-summary-section">
+        <p class="cover-summary-title">Trip at a Glance</p>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Customer</span>
+          <span class="cover-summary-value">{{ booking.customer_name }}</span>
+        </div>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Departure Date</span>
+          <span class="cover-summary-value">{{ booking.cover_departure_date_display }}</span>
+        </div>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Duration</span>
+          <span class="cover-summary-value">{{ booking.total_nights }} Nights / {{ booking.total_days }} Days</span>
+        </div>
+
+        <div class="cover-summary-item">
+          <span class="cover-summary-label">Routing</span>
+          <span class="cover-summary-value">
+            {{ booking.cover_departure_city_display }}
+            &rarr; {{ booking.cover_arrival_airport_display }}
+            &rarr; Return via {{ booking.cover_return_airport_display }}
+          </span>
+        </div>
+      </div>
+
+      {# Right column: Agent Card #}
+      <div class="cover-agent-card">
+        <span class="cover-agent-curated-label">Curated by</span>
+        <p class="cover-agent-name">{{ booking.curated_by.name }}</p>
+
+        <div class="cover-agent-detail">
+          <span class="cover-agent-detail-label">Phone</span>
+          <span class="cover-agent-detail-value">{{ booking.curated_by.phone }}</span>
+        </div>
+
+        <div class="cover-agent-detail">
+          <span class="cover-agent-detail-label">Email</span>
+          <span class="cover-agent-detail-value">{{ booking.curated_by.email }}</span>
+        </div>
+
+        <div class="cover-agent-quotation-date">
+          <span class="cover-agent-quotation-label">Quotation created on</span>
+          <span class="cover-agent-quotation-value">{{ booking.quotation_created_on }}</span>
+        </div>
+      </div>
+
+    </div>
+    {# ── End Phase A2 ─────────────────────────────────────────────────────── #}
+  </div>
+  {% endif %}
+
   <h1>{{ booking.customer_name }}'s trip to {{ countries|join(", ") }}</h1>
+  <div class="meta-block">
+    <strong>{{ booking.total_nights }}N / {{ booking.total_days }}D</strong> &middot; 
+    Routing: {{ booking.departure_city }} 
+    <span style="color: var(--brand-cyan); font-weight: bold;">&rarr;</span> {{ booking.arrival_airport }} 
+    <span style="color: var(--brand-gray);">|</span> Return via: {{ booking.return_airport }} 
+    &middot; Departing on: <strong>{{ booking.date_of_departure }}</strong>
+  </div>
   <div class="meta-block">{{ booking.total_nights }}N / {{ booking.total_days }}D &middot; Departing from {{ booking.departure_city }} on {{ booking.date_of_departure }}</div>
 
   <div class="meta-block">
@@ -208,36 +966,152 @@
     <span class="label">Total cost:</span> {{ booking.total_package_cost_display }} for {{ booking.total_package_cost_pax_label }}
   </div>
 
-  <h2>Tax Collected at Source (TCS)</h2>
-  {% for para in tcs_explanation_paragraphs %}
-    <p>{{ para }}</p>
-  {% endfor %}
+  {# ── Phase D1: TCS explanation card ─────────────────────────────────────
+     Container only — the paragraph loop and its copy are unchanged. The
+     first two paragraphs are bolded positionally by CSS (:nth-child), so
+     don't insert any sibling element inside the card div. The .tcs-section
+     wrapper keeps the heading on the same page as the card. ── #}
+  <div class="tcs-section">
+    <h2>Tax Collected at Source (TCS)</h2>
+    <div class="tcs-explanation-card">
+      {% for para in tcs_explanation_paragraphs %}
+        <p>{{ para }}</p>
+      {% endfor %}
+    </div>
+  </div>
+  {# ── End Phase D1 ──────────────────────────────────────────────────────── #}
 
   <h2>Highlights</h2>
-  <ul>
-    <li>{{ booking.stops|length }} Stops</li>
-    <li>{{ booking.sightseeings|length }} Activities</li>
-    <li>{{ booking.transfers|length }} Transfers</li>
-    <li>Visa Included: {{ "Yes" if booking.visa_included == "true" else "No" }}</li>
-    <li>Travel Insurance Included: {{ "Yes" if booking.travel_insurance_included == "true" else "No" }}</li>
-  </ul>
+  {# ── Phase B: Highlights tile grid ──────────────────────────────────────── #}
+  <div class="highlights-grid">
+
+    <div class="hl-tile">
+      <span class="hl-tile-icon">✈</span>
+      <span class="hl-tile-value">2</span>
+      <span class="hl-tile-label">Flights</span>
+    </div>
+
+    <div class="hl-tile">
+      <span class="hl-tile-icon">🏨</span>
+      <span class="hl-tile-value">{{ booking.stops | selectattr("hotel_name") | list | length }}</span>
+      <span class="hl-tile-label">Hotels</span>
+    </div>
+
+    <div class="hl-tile">
+      <span class="hl-tile-icon">🎯</span>
+      <span class="hl-tile-value">{{ booking.sightseeings | length }}</span>
+      <span class="hl-tile-label">Activities</span>
+    </div>
+
+    <div class="hl-tile">
+      <span class="hl-tile-icon">🚗</span>
+      <span class="hl-tile-value">{{ booking.transfers | length }}</span>
+      <span class="hl-tile-label">Transfers</span>
+    </div>
+
+    {% if booking.visa_included == "true" %}
+    <div class="hl-tile">
+      <span class="hl-tile-icon">🛂</span>
+      <span class="hl-tile-value">Included</span>
+      <span class="hl-tile-label">Visa</span>
+    </div>
+    {% endif %}
+
+    {% if booking.travel_insurance_included == "true" %}
+    <div class="hl-tile">
+      <span class="hl-tile-icon">🛡️</span>
+      <span class="hl-tile-value">Included</span>
+      <span class="hl-tile-label">Insurance</span>
+    </div>
+    {% endif %}
+
+  </div>
+
+  {# ── Phase B: Total cost block ────────────────────────────────────────────── #}
+  <div class="hl-cost-block">
+    <span class="hl-cost-label">Total Package Cost</span>
+    <div class="hl-cost-row">
+      <span class="hl-cost-amount">{{ booking.total_package_cost_display }}</span>
+      <span class="hl-cost-pax">{{ booking.total_package_cost_pax_label }}</span>
+    </div>
+  </div>
 
   <h2>Your Itinerary</h2>
+  {% set stop_counter = namespace(value=0) %}
   {% for item in itinerary_timeline %}
     {% if item.type == "stop" %}
+      {% set stop_counter.value = stop_counter.value + 1 %}
       <div class="stop-card">
-        <div class="stop-header">
-          <span class="stop-location">{{ item.location }}, {{ item.country }}</span>
-          <span class="nights-badge">{{ item.nights }} Night{{ "s" if item.nights != 1 else "" }}</span>
+
+        {# ── Phase C1: Header bar ── #}
+        <div class="stop-header-bar">
+          <div class="stop-header-left">
+            <span class="stop-number-badge">{{ stop_counter.value }}</span>
+            <span class="stop-header-pin">📍</span>
+            <span class="stop-header-location">{{ item.location }}, {{ item.country }}</span>
+          </div>
+          <div class="stop-header-right">
+            <span class="stop-header-nights">{{ item.nights }} Night{{ "s" if item.nights != 1 else "" }}</span>
+          </div>
         </div>
-        <div class="stop-dates">{{ item.checkin_date }} &ndash; {{ item.checkout_date }}</div>
-        <ul>
+
+        {# ── Phase C1: Dates strip ── #}
+        <div class="stop-dates-row">
+          🗓 {{ item.checkin_date }} &ndash; {{ item.checkout_date }}
+        </div>
+
+        {# ── Phase C2: Activities list ── #}
+        <div class="activity-list">
           {% for s in item.sightseeings %}
-            <li>{{ s }}</li>
+          <div class="activity-row {% if loop.index is even %}activity-row--even{% endif %}">
+            <span class="activity-icon">🎯</span>
+            <span class="activity-name">{{ s }}</span>
+          </div>
           {% else %}
-            <li><em>No activities added for this stop.</em></li>
+          <div class="activity-row">
+            <span class="activity-icon">—</span>
+            <span class="activity-name" style="font-style: italic; color: var(--text-secondary);">No activities added for this stop.</span>
+          </div>
           {% endfor %}
-        </ul>
+        </div>
+
+        {# ── Phase C3: Hotel & Accommodation block ── #}
+        {% if item.hotel_name %}
+        <div class="hotel-block">
+
+          <div class="hotel-label-row">HOTEL &middot; {{ item.nights }} Night{{ "s" if item.nights != 1 else "" }} &middot; In {{ item.location }}</div>
+
+          {% if item.hotel_star_rating %}
+          <div class="hotel-star-row">
+            {% for i in range(5) %}{% if i < item.hotel_star_rating %}&#9733;{% else %}<span class="hotel-star--empty">&#9733;</span>{% endif %}{% endfor %}
+          </div>
+          {% endif %}
+
+          <p class="hotel-name">{{ item.hotel_name }}</p>
+
+          {% if item.hotel_room_type %}<p class="hotel-room-type">{{ item.hotel_room_type }}</p>{% endif %}
+
+          {% if item.hotel_meal_plan %}
+          <div class="hotel-meal-row">
+            <span class="hotel-meal-icon">&#127860;</span>
+            <span>{{ item.hotel_meal_plan }}</span>
+          </div>
+          {% endif %}
+
+          {% if item.hotel_amenities %}
+          <div class="hotel-amenities-list">
+            {% for amenity in item.hotel_amenities %}
+            <div class="hotel-amenity-row">
+              <span class="hotel-amenity-check">&#10003;</span>
+              <span>{{ amenity }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+        </div>
+        {% endif %}
+
       </div>
     {% elif item.type == "transfer" %}
       <div class="transfer-row">
@@ -256,12 +1130,33 @@
     {% endfor %}
   </ul>
 
-  <h2>TCS Credit &amp; Refund</h2>
-  <ul>
-    {% for point in tcs_credit_block_points %}
-      <li>{{ point }}</li>
-    {% endfor %}
-  </ul>
+  {# ── Phase D1: TCS credit block ─────────────────────────────────────────
+     Column headers live here rather than in static_content.py because this
+     phase may only touch itinerary_template.html. KEEP IN SYNC with
+     TCS_CREDIT_BLOCK_POINTS in static_content.py — one header per point,
+     in the same order. Extra points render header-less rather than
+     breaking. ── #}
+  {% set tcs_credit_headers = [
+       "How TCS is collected",
+       "Claiming your credit",
+       "Receiving your refund"
+     ] %}
+  <div class="tcs-section">
+    <h2>TCS Credit &amp; Refund</h2>
+    <div class="tcs-credit-card">
+      <div class="tcs-credit-grid">
+        {% for point in tcs_credit_block_points %}
+          <div class="tcs-credit-col">
+            {% if loop.index0 < tcs_credit_headers | length %}
+              <div class="tcs-credit-col-header">{{ tcs_credit_headers[loop.index0] }}</div>
+            {% endif %}
+            <div class="tcs-credit-col-text">{{ point }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {# ── End Phase D1 ──────────────────────────────────────────────────────── #}
 
   {% if visa_faq %}
   <h2>Visa FAQs</h2>
