@@ -157,6 +157,105 @@ const ROOM_TYPES = [
   "4 persons in single room"
 ];
 
+// =============================================================================
+// DEV ONLY — Test autofill data (mirrors SAMPLE_BOOKING_VIETNAM_VISA in
+// booking_data.py). Delete or guard behind an env flag before going to prod.
+// =============================================================================
+
+// The arrival airport used in the Vietnam test booking
+const _VN_ARRIVAL  = "Noi Bai International Airport (HAN) — Hanoi";
+const _VN_RETURN   = "Noi Bai International Airport (HAN) — Hanoi";
+const _VN_DEPART   = "Chhatrapati Shivaji Maharaj International Airport (BOM) — Mumbai";
+
+// transfer.transfers state only stores mode for non-fixed (non-Flight) legs.
+// Keys must exactly match what generateTransfers() produces at runtime.
+// Fixed Flight legs (LEG 1 and LEG N) are hardcoded to "Flight" and never
+// stored in form.transfers, so we only need the two variable legs here:
+//   LEG 2: __airport_to_hotel__|<arrivalAirport>|<firstStop.country>|<firstStop.location>
+//   LEG 3: <fromCountry>|<fromLocation>|<toCountry>|<toLocation>  (inter-stop)
+//   LEG N-1: __hotel_to_airport__|<lastStop.country>|<lastStop.location>|<returnAirport>
+const _VN_TRANSFERS = {
+  [`__airport_to_hotel__|${_VN_ARRIVAL}|Vietnam|Hanoi`]: "Private Car",
+  ["Vietnam|Hanoi|Vietnam|Hoi An"]: "Flight",
+  [`__hotel_to_airport__|Vietnam|Hoi An|${_VN_RETURN}`]: "Private Car",
+};
+
+// stopHotels: { [stopIndex]: { name, rating, roomType, meals[], pool, beach } }
+// Hotel names don't have to match MOCK_HOTELS — the form also accepts any
+// free-text value. But if they DO match, rating auto-fills from MOCK_HOTELS.
+// Using names not in MOCK_HOTELS here since the sample booking uses realistic
+// hotel names; rating is supplied explicitly.
+const _VN_STOP_HOTELS = {
+  0: {
+    name: "Hanoi Old Quarter Heritage Hotel",
+    rating: 4,
+    roomType: "Normal 2 Adults in 1 room occupancy",
+    meals: ["Breakfast", "Dinner"],
+    pool: true,   // maps to "Swimming Pool Access, Free Wifi, Free Self Parking"
+    beach: false,
+  },
+  1: {
+    name: "Hoi An Riverside Boutique Resort",
+    rating: 5,
+    roomType: "VIP Suite",
+    meals: ["Breakfast", "Lunch", "Dinner"],
+    pool: false,
+    beach: true,  // maps to "Private Beach Front"
+  },
+};
+
+const DEV_TEST_STATE = {
+  customerName:     "Priya Sharma",
+  dateOfDeparture:  "2026-09-15",
+  totalNights:      "5",
+  numberOfPax:      "3",
+  numberOfAdults:   "2",
+  numberOfKids:     "1",
+  numberOfInfants:  "0",
+  departureCity:    _VN_DEPART,
+  arrivalAirport:   _VN_ARRIVAL,
+  returnAirport:    _VN_RETURN,
+
+  // Places — must use keys/values from PLACES_BY_COUNTRY
+  placesToCover: { Vietnam: ["Hanoi", "Hoi An"] },
+  expandedCountries: [],
+  customLocationInput: "",
+  customLocationCountry: "",
+  customLocations: [],
+
+  // Sightseeings — order values mirror SAMPLE_BOOKING_VIETNAM_VISA
+  sightseeings: [
+    { order: 1, country: "Vietnam", location: "Hanoi",  sightseeing: "Hoan Kiem Lake & Old Quarter Walking Tour" },
+    { order: 1, country: "Vietnam", location: "Hanoi",  sightseeing: "Temple of Literature Visit" },
+    { order: 1, country: "Vietnam", location: "Hanoi",  sightseeing: "Vietnamese Street Food Cooking Class" },
+    { order: 2, country: "Vietnam", location: "Hoi An", sightseeing: "Ancient Town Exploration & Photo Tour" },
+    { order: 2, country: "Vietnam", location: "Hoi An", sightseeing: "Lantern-Making Workshop" },
+    { order: 2, country: "Vietnam", location: "Hoi An", sightseeing: "Thu Bon River Sunset Cruise" },
+  ],
+  sightseeingCountry:  "",
+  sightseeingLocation: "",
+  sightseeingInput:    "",
+
+  // Nights: stopNights only contains non-last stops (idx 0 = Hanoi: 2N).
+  // Hoi An (idx 1) is the last stop — auto-calculated as 5 - 2 = 3N.
+  stopNights: { 0: "2" },
+  stopHotels: _VN_STOP_HOTELS,
+
+  // Transfer modes (non-fixed legs only — see key format note above)
+  transfers: _VN_TRANSFERS,
+
+  visa:            "true",
+  travelInsurance: "true",
+
+  // Optional fields
+  totalPackageCost: "145000",
+  agentName:        "Priya Holidays Specialist",
+  agentPhone:       "9988776655",
+  agentEmail:       "priya.specialist@example-ota.in",
+};
+
+// =============================================================================
+
 const initialState = {
   customerName: "",
   dateOfDeparture: "",
@@ -490,7 +589,7 @@ export default function HolidayBookingForm() {
       const hotelData = form.stopHotels[idx] || {};
       
       // Combine meals, pool, and beach into the single amenities string the backend expects
-      const amenitiesList = [...(hotelData.meals || [])];
+      const amenitiesList = [];
       if (hotelData.pool) amenitiesList.push("Swimming Pool Access");
       if (hotelData.beach) amenitiesList.push("Private Beach Front");
 
@@ -554,6 +653,15 @@ export default function HolidayBookingForm() {
 
   const handleReset = () => {
     setForm(initialState);
+    setSubmitted(false);
+    setFormData(null);
+    setErrors({});
+  };
+
+  // DEV ONLY — loads DEV_TEST_STATE into the form so you can test PDF
+  // changes without manually filling every field each time.
+  const handleAutofill = () => {
+    setForm(DEV_TEST_STATE);
     setSubmitted(false);
     setFormData(null);
     setErrors({});
@@ -785,6 +893,46 @@ export default function HolidayBookingForm() {
 
   return (
     <div style={{ maxWidth: 720, padding: "2rem 1rem", fontFamily: "sans-serif", fontSize: 14 }}>
+
+      {/* ── DEV TOOLBAR ─────────────────────────────────────────────────────────
+          Remove this block (or guard with import.meta.env.DEV) before shipping.
+          Loads DEV_TEST_STATE (Vietnam, 5N/6D, Priya Sharma) so you can reach
+          "Download PDF" in one click instead of filling the form manually.
+      ─────────────────────────────────────────────────────────────────────── */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        marginBottom: "1.25rem",
+        padding: "10px 14px",
+        background: "#fffbeb",
+        border: "1px solid #f5c842",
+        borderRadius: 6,
+        fontSize: 12,
+      }}>
+        <span style={{ fontSize: 16 }}>🛠</span>
+        <span style={{ color: "#7a5c00", fontWeight: 500 }}>Dev toolbar</span>
+        <span style={{ color: "#999", margin: "0 4px" }}>·</span>
+        <span style={{ color: "#555" }}>Vietnam 5N/6D · Priya Sharma · visa incl.</span>
+        <button
+          type="button"
+          onClick={handleAutofill}
+          style={{
+            marginLeft: "auto",
+            padding: "5px 14px",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            background: "#f5c842",
+            border: "none",
+            borderRadius: 4,
+            color: "#3a2c00",
+          }}
+        >
+          Autofill test data
+        </button>
+      </div>
+
       <h2 style={{ marginBottom: "0.25rem" }}>Holiday Booking — Customer Query Form</h2>
       <p style={{ color: "#666", marginBottom: "2rem", fontSize: 12 }}>
         Internal use only — Holidays vertical
@@ -962,44 +1110,58 @@ export default function HolidayBookingForm() {
               )}
             </div>
 
-            {/* 4b. Arrival Airport */}
+            {/* 4b. Arrival Airport - CONVERTED TO DROPDOWN */}
             <div style={{ flex: "1 1 200px" }}>
               <label htmlFor="arrival-airport" style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
                 Arrival Airport at Destination
               </label>
-              <input
-                type="text"
+              <select
                 id="arrival-airport"
-                placeholder="e.g. Phuket Int. Airport (HKT)"
                 value={form.arrivalAirport}
                 onChange={(e) => handleChange("arrivalAirport", e.target.value)}
                 style={{ padding: "6px 10px", fontSize: 14, width: "100%", boxSizing: "border-box" }}
-              />
+              >
+                <option value="">— Select arrival airport —</option>
+                {AIRPORTS.map(({ group, options }) => (
+                  <optgroup key={group} label={group}>
+                    {options.map((airport) => (
+                      <option key={airport} value={airport}>{airport}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
               {errors.arrivalAirport && (
                 <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.arrivalAirport}</p>
               )}
             </div>
 
-            {/* 4c. Return Airport */}
+            {/* 4c. Return Airport - CONVERTED TO DROPDOWN */}
             <div style={{ flex: "1 1 200px" }}>
               <label htmlFor="return-airport" style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
                 Return Airport from the last location
               </label>
-              <input
-                type="text"
+              <select
                 id="return-airport"
-                placeholder="e.g. Suvarnabhumi (BKK)"
                 value={form.returnAirport}
                 onChange={(e) => handleChange("returnAirport", e.target.value)}
                 style={{ padding: "6px 10px", fontSize: 14, width: "100%", boxSizing: "border-box" }}
-              />
+              >
+                <option value="">— Select return airport —</option>
+                {AIRPORTS.map(({ group, options }) => (
+                  <optgroup key={group} label={group}>
+                    {options.map((airport) => (
+                      <option key={airport} value={airport}>{airport}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
               {errors.returnAirport && (
                 <p style={{ color: "red", fontSize: 12, marginTop: 4 }}>{errors.returnAirport}</p>
               )}
             </div>
           </div>
         </div>
-
+        
         <hr style={{ margin: "2rem 0", border: "none", borderTop: "1px solid #e0e0e0" }} />
 
         {/* 5. Places to Cover */}
@@ -1633,12 +1795,29 @@ export default function HolidayBookingForm() {
         </div>
 
         {/* Actions */}
-        <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <button type="submit" style={{ padding: "8px 20px", fontSize: 14, cursor: "pointer" }}>
             Submit
           </button>
           <button type="button" onClick={handleReset} style={{ padding: "8px 20px", fontSize: 14, cursor: "pointer" }}>
             Reset
+          </button>
+          {/* DEV ONLY */}
+          <button
+            type="button"
+            onClick={handleAutofill}
+            style={{
+              padding: "8px 20px",
+              fontSize: 14,
+              cursor: "pointer",
+              background: "#fffbeb",
+              border: "1px solid #f5c842",
+              borderRadius: 4,
+              color: "#7a5c00",
+              fontWeight: 600,
+            }}
+          >
+            🛠 Autofill
           </button>
           <button
             type="button"
